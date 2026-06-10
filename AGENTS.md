@@ -111,6 +111,10 @@ round-trips through the real client's `GenericColumnValue.Decode`;
   until encodeValue parity is proven; English only on github.com. Published
   versions are immutable — never re-tag (proxy.golang.org caches
   aggressively).
+- **Docs placement policy:** user-facing guidance lives in godoc (doc.go
+  sections, runnable Examples) so `go doc` / pkg.go.dev suffice; README is
+  a thin showcase pointing there. Version requirements (e.g. minimum
+  spanvalue) belong in each version's release notes, not README/godoc.
 - **Versioning policy: stay on v0.** Breaking changes bump the minor
   version; non-breaking changes (features included) bump the patch version.
   Pre-releases (`-alpha.N`) may precede either.

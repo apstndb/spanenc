@@ -128,49 +128,14 @@ cells, _ := spanvalue.FormatRowColumns(fc, enc.Columns(), values) // []string
 
 ## Adoption guide
 
-Lessons from downstream adoption (spanner-mycli PoC,
-[#1](https://github.com/apstndb/spanenc/issues/1)):
-
-**When spanenc is worth it.** Typed columns, PROTO/ENUM cells, NULL styling,
-and file export through spanvalue/writer all benefit from going through
-GCVs. If a code path renders rows whose values are *already display
-strings* (a `SHOW`-style key/value listing of pre-formatted text), building
-GCVs just to format them back into strings adds measurable work for no
-benefit — keep such paths as plain string rows.
-
-**`Columns()` vs `ResultSetMetadata()`.** Use `RowEncoder.Columns()` when
-consumers only need names: it keeps string-only headers and existing golden
-tests stable. Reach for `ResultSetMetadata()` / `RowType()` only when
-consumers need Spanner types (typed or verbose headers, writer metadata) —
-switching a consumer from names to metadata typically changes how it
-renders headers.
-
-**spanvalue version coupling.** spanenc requires `spanvalue` ≥ v0.7.1, and
-formatting output can change between spanvalue versions (for example
-FLOAT64 display). When adopting spanenc into a project on an older
-spanvalue, expect golden-test diffs from the spanvalue upgrade itself and
-review them separately from the spanenc change. Per the dependency policy,
-spanenc declares minimum versions only; your module controls the actual
-versions under MVS.
-
-**FAQ: why did `spanner:"Name;readonly"` become a literal STRUCT field
-name?** The row-shaped helpers parse tag options, but STRUCT-typed values
-mirror the client's `encodeStruct`, which reads the raw tag — options leak
-into STRUCT field names verbatim. This is deliberate client parity:
-
-```go
-type Row struct {
-    Gen string `spanner:"Name;readonly"`
-}
-
-spanenc.StructColumns[Row]()  // ["Name"]            (row-shaped: options parsed)
-spanenc.TypeFor[Row]()        // STRUCT<`Name;readonly` STRING>
-                              // (STRUCT-shaped: raw tag, like the client)
-```
-
-Use the row-shaped APIs (`StructColumns`, `RowEncoder`,
-`MutationColumnsAndValues`, ...) for table rows; reserve struct *values*
-(`ValueOf` on a struct) for actual STRUCT-typed parameters.
+See the **Adoption guide** section of the
+[package documentation](https://pkg.go.dev/github.com/apstndb/spanenc):
+when GCV-based rows pay off vs plain string rows, `Columns()` vs
+`ResultSetMetadata()`, formatting stability across spanvalue upgrades, and
+the tag-option quirk (`ExampleStructColumns_tagOptions`). Minimum dependency
+versions are recorded in the
+[release notes](https://github.com/apstndb/spanenc/releases) of each
+version.
 
 ## Semantics notes
 

@@ -93,6 +93,29 @@
 //     client sends a raw protobuf NumberValue and HTML-escaped JSON. Both
 //     forms are semantically equivalent and accepted by Spanner.
 //
+// # Adoption guide
+//
+// spanenc pays off where rows carry typed columns, PROTO/ENUM cells, NULL
+// styling, or flow into [github.com/apstndb/spanvalue/writer] export. If a
+// code path renders rows whose values are already display strings (a
+// SHOW-style key/value listing of pre-formatted text), building GCVs just
+// to format them back into strings adds work for no benefit — keep such
+// paths as plain string rows.
+//
+// For display cells, pass encoded values to
+// [github.com/apstndb/spanvalue.FormatRowColumns] instead of writing a
+// per-application GCV-to-string bridge. Prefer [RowEncoder.Columns] when
+// consumers only need column names; reach for [RowEncoder.ResultSetMetadata]
+// or [RowTypeFor] only when they need Spanner types — switching a consumer
+// from names to metadata typically changes how it renders headers.
+//
+// Formatting of GCVs is owned by [github.com/apstndb/spanvalue], so
+// upgrading spanvalue can change rendered output (for example FLOAT64
+// display); review golden-test diffs from a spanvalue upgrade separately
+// from the spanenc adoption itself. Minimum dependency versions are
+// recorded in the release notes of each version:
+// https://github.com/apstndb/spanenc/releases
+//
 // The package is experimental: the API may change while encodeValue parity
 // is being proven against client library releases.
 package spanenc

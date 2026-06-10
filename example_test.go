@@ -89,6 +89,35 @@ func ExampleStructColumnsAndValues() {
 	// 1,Marc
 }
 
+// ExampleStructColumns_tagOptions contrasts the two struct field listings:
+// row-shaped helpers parse `;`-separated tag options, while STRUCT-typed
+// values mirror the client's raw-tag encodeStruct, so options leak into
+// STRUCT field names verbatim (deliberate client parity). Use row-shaped
+// APIs for table rows; reserve struct values for actual STRUCT-typed
+// parameters.
+func ExampleStructColumns_tagOptions() {
+	type Row struct {
+		Gen string `spanner:"Name;readonly"`
+	}
+
+	columns, err := spanenc.StructColumns[Row]() // row-shaped: options parsed
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(columns)
+
+	typ, err := spanenc.TypeFor[Row]() // STRUCT-shaped: raw tag, like the client
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(typ.GetStructType().GetFields()[0].GetName())
+	// Output:
+	// [Name]
+	// Name;readonly
+}
+
 // ExampleMutationColumnsAndValues masks columns by name before building a
 // plain cols/vals mutation, which the *Struct mutation constructors cannot
 // express.
