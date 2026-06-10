@@ -123,9 +123,16 @@ This package is, by design, a behavioral mirror of
   `getDecodableSpannerType` with independent code; new client-supported Go
   types and Spanner types must be added here when upstream adds them.
 
-When bumping the `cloud.google.com/go/spanner` dependency, re-audit the
-mirrored functions and update the tracked version in the package
-documentation.
+The mirrored-semantics version is independent of the `go.mod` requirement:
+`go.mod` declares only the minimum `cloud.google.com/go/spanner` providing
+the APIs this module compiles against (currently the v1.84.1 floor inherited
+from spanvalue), so downstream modules keep control of the client version
+under MVS. CI additionally tests against the latest spanner release to catch
+drift early.
+
+When re-auditing against a newer client release, update the tracked version
+in the package documentation — and bump `go.mod` only if newly used APIs
+require it.
 
 ## License
 

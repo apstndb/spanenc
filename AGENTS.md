@@ -33,10 +33,16 @@ module cache:
 | `validateNumeric` | `validateNumeric` (same algorithm, independent expression; default NumericError handling) |
 | `github.com/apstndb/structfields` (dependency) | **exported fork of `cloud.google.com/go/internal/fields`** — upstream-derived code lives in that ASL2 module, keeping spanenc MIT |
 
-When bumping the spanner dependency: re-audit these functions against
-upstream, update the tracked version in `doc.go` and `README.md`, and extend
-`exactGoTypes` (typeof.go) together with the `ValueOf` switch — the test
-suite cross-checks `TypeFromGoType` against `ValueOf` results.
+When re-auditing against a newer spanner release: diff these functions
+against upstream, update the tracked version in `doc.go` and `README.md`, and
+extend `exactGoTypes` (typeof.go) together with the `ValueOf` switch — the
+test suite cross-checks `TypeFromGoType` against `ValueOf` results.
+
+**Mirrored-semantics version ≠ go.mod requirement.** `go.mod` declares only
+the minimum spanner version whose APIs the code uses (currently the v1.84.1
+floor inherited from spanvalue) so downstreams control the client version
+under MVS; do NOT bump it just because the audited semantics version moved.
+The `latest-deps` CI job tests against spanner@latest to catch drift.
 
 Mirrored quirks are deliberate (do not "fix"): `==` sentinel comparison for
 `spanner.CommitTimestamp`; nil named UUID-array slices converting to an empty

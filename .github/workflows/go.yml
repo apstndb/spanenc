@@ -40,3 +40,23 @@ jobs:
 
       - name: mise run test-race
         run: mise run test-race
+
+  # go.mod intentionally declares only the minimum spanner version (MVS
+  # floor); this job catches drift against the latest client release early.
+  latest-deps:
+    name: latest spanner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: jdx/mise-action@v4
+        with:
+          version: 2026.6.1
+
+      - name: Upgrade cloud.google.com/go/spanner to latest
+        run: |
+          go get cloud.google.com/go/spanner@latest
+          go mod tidy
+
+      - name: Test against latest spanner
+        run: go test ./...
