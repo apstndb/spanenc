@@ -196,6 +196,75 @@ func TestMutationMap(t *testing.T) {
 		t.Errorf("MutationMap mismatch (-want +got):\n%s", diff)
 	}
 
+	t.Run("mask options apply", func(t *testing.T) {
+		t.Parallel()
+		got, err := spanenc.MutationMap(singer{SingerID: 1}, spanenc.WithColumns("SingerId"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(map[string]any{"SingerId": int64(1)}, got); diff != "" {
+			t.Errorf("MutationMap mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("include mask keeps struct order", func(t *testing.T) {
+		t.Parallel()
+		cols, vals, err := spanenc.MutationColumnsAndValues(
+			singer{SingerID: 1, Name: "n", Tags: []string{"a"}},
+			spanenc.WithColumns("Tags", "SingerId"), // argument order is irrelevant
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]string{"SingerId", "Tags"}, cols); diff != "" {
+			t.Errorf("cols mismatch (-want +got):\n%s", diff)
+		}
+		if diff := cmp.Diff([]any{int64(1), []string{"a"}}, vals); diff != "" {
+			t.Errorf("vals mismatch (-want +got):\n%s", diff)
+		}
+	})
+	t.Run("exclude mask", func(t *testing.T) {
+		t.Parallel()
+		cols, _, err := spanenc.MutationColumnsAndValues(singer{}, spanenc.WithoutColumns("Tags"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]string{"SingerId", "Name"}, cols); diff != "" {
+			t.Errorf("cols mismatch (-want +got):\n%s", diff)
+		}
+	})
+	t.Run("exclude mask may name read-only columns", func(t *testing.T) {
+		t.Parallel()
+		cols, _, err := spanenc.MutationColumnsAndValues(readOnlyRow{}, spanenc.WithoutColumns("Gen"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]string{"Id"}, cols); diff != "" {
+			t.Errorf("cols mismatch (-want +got):\n%s", diff)
+		}
+	})
+	for _, tt := range []struct {
+		desc string
+		opts []spanenc.MutationOption
+	}{
+		{"include unknown column", []spanenc.MutationOption{spanenc.WithColumns("Nope")}},
+		{"exclude unknown column", []spanenc.MutationOption{spanenc.WithoutColumns("Nope")}},
+		{"include and exclude combined", []spanenc.MutationOption{spanenc.WithColumns("SingerId"), spanenc.WithoutColumns("Name")}},
+	} {
+		t.Run(tt.desc, func(t *testing.T) {
+			t.Parallel()
+			if _, _, err := spanenc.MutationColumnsAndValues(singer{}, tt.opts...); !errors.Is(err, spanenc.ErrInvalidColumnMask) {
+				t.Errorf("error = %v, want ErrInvalidColumnMask", err)
+			}
+		})
+	}
+	t.Run("include read-only column", func(t *testing.T) {
+		t.Parallel()
+		if _, _, err := spanenc.MutationColumnsAndValues(readOnlyRow{}, spanenc.WithColumns("Gen")); !errors.Is(err, spanenc.ErrInvalidColumnMask) {
+			t.Errorf("error = %v, want ErrInvalidColumnMask", err)
+		}
+	})
+
 	t.Run("read-only fields excluded", func(t *testing.T) {
 		t.Parallel()
 		// Mirrors structToMutationParams since spanner v1.86.0: read-only

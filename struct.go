@@ -141,7 +141,10 @@ func structValue(v any) (reflect.Value, fields.List, error) {
 // For the client library's own mutation constructors, use
 // [MutationColumnsAndValues] or [MutationMap] instead, which keep plain Go
 // values, exclude read-only fields, and let the client encode the values.
-func StructColumnsAndValues(v any) ([]string, []spanner.GenericColumnValue, error) {
+//
+// Options configure the per-field encoding; see [WithLossOfPrecisionHandling].
+func StructColumnsAndValues(v any, opts ...EncodeOption) ([]string, []spanner.GenericColumnValue, error) {
+	cfg := newEncodeConfig(opts)
 	rv, fl, err := structValue(v)
 	if err != nil {
 		return nil, nil, err
@@ -150,7 +153,7 @@ func StructColumnsAndValues(v any) ([]string, []spanner.GenericColumnValue, erro
 	values := make([]spanner.GenericColumnValue, len(fl))
 	for i, f := range fl {
 		names[i] = f.Name
-		fgcv, err := ValueOf(rv.FieldByIndex(f.Index).Interface())
+		fgcv, err := encodeValue(cfg, rv.FieldByIndex(f.Index).Interface())
 		if err != nil {
 			return nil, nil, &gcvctor.StructFieldError{Index: i, Name: f.Name, Err: err}
 		}
@@ -172,15 +175,25 @@ func StructColumnsAndValues(v any) ([]string, []spanner.GenericColumnValue, erro
 // them when the mutation is applied, so this helper accepts whatever
 // InsertStruct accepts. A nil pointer returns [ErrNilStructPointer] where
 // the client would silently produce an empty mutation.
-func MutationColumnsAndValues(v any) ([]string, []any, error) {
+//
+// An update-mask-style column mask can be written as either an include list
+// ([WithColumns]) or an exclude list ([WithoutColumns]); masked output keeps
+// the struct declaration order, and mask mistakes (unknown columns,
+// read-only columns in an include list, or combining both kinds) return
+// [ErrInvalidColumnMask].
+func MutationColumnsAndValues(v any, opts ...MutationOption) ([]string, []any, error) {
+	cfg := newMutationConfig(opts)
 	rv, fl, err := structValue(v)
 	if err != nil {
+		return nil, nil, err
+	}
+	if err := cfg.validate(fl); err != nil {
 		return nil, nil, err
 	}
 	cols := make([]string, 0, len(fl))
 	vals := make([]any, 0, len(fl))
 	for _, f := range fl {
-		if isReadOnlyField(f) {
+		if isReadOnlyField(f) || !cfg.keep(f.Name) {
 			continue
 		}
 		cols = append(cols, f.Name)
@@ -192,13 +205,14 @@ func MutationColumnsAndValues(v any) ([]string, []any, error) {
 // MutationMap extracts a column-name-to-Go-value map from a struct (or
 // non-nil pointer to struct) for the *Map mutation constructors
 // ([spanner.InsertMap], [spanner.UpdateMap], [spanner.ReplaceMap],
-// [spanner.InsertOrUpdateMap]). Read-only fields are excluded like
-// [MutationColumnsAndValues]. Masking a column is a map delete away.
+// [spanner.InsertOrUpdateMap]). Read-only fields are excluded and the
+// [WithColumns] / [WithoutColumns] masks apply, like
+// [MutationColumnsAndValues].
 //
 // Duplicate column names (possible with explicit duplicate `spanner` tags)
 // return an error rather than silently dropping a value.
-func MutationMap(v any) (map[string]any, error) {
-	cols, vals, err := MutationColumnsAndValues(v)
+func MutationMap(v any, opts ...MutationOption) (map[string]any, error) {
+	cols, vals, err := MutationColumnsAndValues(v, opts...)
 	if err != nil {
 		return nil, err
 	}

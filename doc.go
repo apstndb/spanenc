@@ -31,8 +31,9 @@
 //   - [MutationColumnsAndValues] / [MutationMap]: one struct → cols/vals or
 //     map with plain Go values, for the non-Struct mutation constructors
 //     ([cloud.google.com/go/spanner.Update],
-//     [cloud.google.com/go/spanner.UpdateMap], ...), enabling column masking
-//     by name.
+//     [cloud.google.com/go/spanner.UpdateMap], ...). An update-mask-style
+//     column mask can be written as an include list ([WithColumns]) or an
+//     exclude list ([WithoutColumns]).
 //   - [ValuesFromSlice] / [ArrayValueFromSlice]: homogeneous slices →
 //     (element type, wire values) or an ARRAY GCV; heterogeneous-capable
 //     (interface) element types are rejected.
@@ -70,9 +71,13 @@
 //     [ErrNilStructPointer]; the client silently builds an empty mutation.
 //   - [cloud.google.com/go/spanner.GenericColumnValue] inputs with a nil
 //     Type are rejected.
-//   - NUMERIC precision is always validated (the client validates only under
-//     its default NumericError loss-of-precision handling, which is also the
-//     behavior mirrored here).
+//   - NUMERIC loss-of-precision handling is an explicit per-call option
+//     ([WithLossOfPrecisionHandling], reusing the client's
+//     [cloud.google.com/go/spanner.LossOfPrecisionHandlingOption]
+//     vocabulary); the package-global
+//     [cloud.google.com/go/spanner.LossOfPrecisionHandling] is never read.
+//     The default is [cloud.google.com/go/spanner.NumericError] (validate),
+//     while the client's global defaults to NumericRound (silent rounding).
 //   - Non-finite FLOAT64/FLOAT32 values and JSON payloads use the canonical
 //     wire forms produced by [github.com/apstndb/spanvalue/gcvctor]
 //     ("NaN"/"Infinity" strings; compact JSON without HTML escaping); the

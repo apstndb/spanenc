@@ -3,7 +3,6 @@ package spanenc_test
 import (
 	"fmt"
 	"os"
-	"slices"
 
 	"cloud.google.com/go/spanner"
 	"github.com/apstndb/spanvalue"
@@ -100,24 +99,19 @@ func ExampleMutationColumnsAndValues() {
 		LastName  string
 	}
 
-	cols, vals, err := spanenc.MutationColumnsAndValues(Singer{SingerID: 1, FirstName: "Marc", LastName: "Richards"})
+	// Update only SingerId and LastName; the mask could equally be written
+	// as an exclude list with WithoutColumns("FirstName").
+	cols, vals, err := spanenc.MutationColumnsAndValues(
+		Singer{SingerID: 1, FirstName: "Marc", LastName: "Richards"},
+		spanenc.WithColumns("SingerId", "LastName"),
+	)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	// Update only SingerId and LastName, masking FirstName.
-	var mcols []string
-	var mvals []any
-	for i, c := range cols {
-		if !slices.Contains([]string{"SingerId", "LastName"}, c) {
-			continue
-		}
-		mcols = append(mcols, c)
-		mvals = append(mvals, vals[i])
-	}
-	_ = spanner.Update("Singers", mcols, mvals)
-	fmt.Println(mcols)
-	fmt.Println(mvals)
+	_ = spanner.Update("Singers", cols, vals)
+	fmt.Println(cols)
+	fmt.Println(vals)
 	// Output:
 	// [SingerId LastName]
 	// [1 Richards]

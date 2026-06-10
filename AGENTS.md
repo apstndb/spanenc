@@ -57,10 +57,12 @@ structToMutationParams; dead `Ptr` branch parity in `customBaseGoType`.
 
 Strictness so malformed GCVs never enter the spanvalue stack: untyped nil →
 `ErrUntypedNil`; nil struct pointer in row-shaped helpers →
-`ErrNilStructPointer`; GCV input with nil Type rejected; NUMERIC always
-validated; non-finite floats and JSON use gcvctor canonical wire forms
-(strings / unescaped JSON) instead of the client's NumberValue / HTML-escaped
-JSON.
+`ErrNilStructPointer`; GCV input with nil Type rejected; NUMERIC
+loss-of-precision is per-call (`WithLossOfPrecisionHandling`, default
+NumericError) and NEVER reads the client's package-global
+`spanner.LossOfPrecisionHandling` (whose default is NumericRound); non-finite
+floats and JSON use gcvctor canonical wire forms (strings / unescaped JSON)
+instead of the client's NumberValue / HTML-escaped JSON.
 
 ## API map
 
@@ -73,8 +75,10 @@ JSON.
 - `StructColumnsAndValues` — struct → columns + GCVs (spanvalue/writer
   `WriteValues`).
 - `MutationColumnsAndValues` / `MutationMap` — struct → plain Go cols/vals or
-  map for `spanner.Insert/Update/Replace(...)` / `*Map` constructors; enables
-  column masking by name. Values are NOT GCV-encoded (the client encodes them).
+  map for `spanner.Insert/Update/Replace(...)` / `*Map` constructors; column
+  masks via `WithColumns` (include) / `WithoutColumns` (exclude), strict
+  (`ErrInvalidColumnMask` on unknown/read-only-in-include/combined). Values
+  are NOT GCV-encoded (the client encodes them).
 - `ValuesFromSlice[T]` / `ArrayValueFromSlice[T]` — homogeneous slices;
   interface element types rejected via static inference; nil slice = typed
   NULL ARRAY at the GCV level.

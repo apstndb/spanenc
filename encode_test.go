@@ -222,6 +222,61 @@ func TestValueOfErrors(t *testing.T) {
 	}
 }
 
+func TestLossOfPrecisionHandling(t *testing.T) {
+	t.Parallel()
+
+	third := big.NewRat(1, 3) // not representable within scale 9
+
+	t.Run("default validates", func(t *testing.T) {
+		t.Parallel()
+		if _, err := spanenc.ValueOf(third); !errors.Is(err, spanenc.ErrNumericOutOfRange) {
+			t.Errorf("error = %v, want ErrNumericOutOfRange", err)
+		}
+	})
+	t.Run("explicit NumericError validates", func(t *testing.T) {
+		t.Parallel()
+		_, err := spanenc.ValueOf(third, spanenc.WithLossOfPrecisionHandling(spanner.NumericError))
+		if !errors.Is(err, spanenc.ErrNumericOutOfRange) {
+			t.Errorf("error = %v, want ErrNumericOutOfRange", err)
+		}
+	})
+	t.Run("NumericRound rounds", func(t *testing.T) {
+		t.Parallel()
+		got, err := spanenc.ValueOf(third, spanenc.WithLossOfPrecisionHandling(spanner.NumericRound))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := spanner.GenericColumnValue{Type: typector.Numeric(), Value: str("0.333333333")}
+		if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+	t.Run("propagates into slices", func(t *testing.T) {
+		t.Parallel()
+		_, values, err := spanenc.ValuesFromSlice([]*big.Rat{third}, spanenc.WithLossOfPrecisionHandling(spanner.NumericRound))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]*structpb.Value{str("0.333333333")}, values, protocmp.Transform()); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+	t.Run("propagates into struct fields", func(t *testing.T) {
+		t.Parallel()
+		type row struct {
+			N big.Rat
+		}
+		_, values, err := spanenc.StructColumnsAndValues(row{N: *third}, spanenc.WithLossOfPrecisionHandling(spanner.NumericRound))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []spanner.GenericColumnValue{{Type: typector.Numeric(), Value: str("0.333333333")}}
+		if diff := cmp.Diff(want, values, protocmp.Transform()); diff != "" {
+			t.Errorf("mismatch (-want +got):\n%s", diff)
+		}
+	})
+}
+
 // TestDecodeRoundTrip verifies wire compatibility with the real client
 // library: values encoded by spanenc must decode back through
 // spanner.GenericColumnValue.Decode.

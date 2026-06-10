@@ -53,7 +53,14 @@ var (
 
 	// ErrNumericOutOfRange is returned when a NUMERIC input exceeds the
 	// precision or scale supported by Cloud Spanner, mirroring the client's
-	// validateNumeric under the default NumericError loss-of-precision
-	// handling.
+	// validateNumeric under NumericError loss-of-precision handling — this
+	// package's per-call default; pass
+	// WithLossOfPrecisionHandling(spanner.NumericRound) to round instead.
 	ErrNumericOutOfRange = errors.New("spanenc: NUMERIC value exceeds supported precision or scale")
+
+	// ErrInvalidColumnMask is returned by [MutationColumnsAndValues] and
+	// [MutationMap] when a [WithColumns] / [WithoutColumns] mask names an
+	// unknown column, includes a read-only column, or combines include and
+	// exclude masks.
+	ErrInvalidColumnMask = errors.New("spanenc: invalid column mask")
 )

@@ -20,8 +20,8 @@ import (
 // A nil slice returns the element type with a nil values slice. To express a
 // typed NULL ARRAY versus an empty ARRAY at the GCV level, use
 // [ArrayValueFromSlice].
-func ValuesFromSlice[T any](vs []T) (*sppb.Type, []*structpb.Value, error) {
-	elemType, gcvs, err := sliceElements(vs)
+func ValuesFromSlice[T any](vs []T, opts ...EncodeOption) (*sppb.Type, []*structpb.Value, error) {
+	elemType, gcvs, err := sliceElements(vs, newEncodeConfig(opts))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -40,8 +40,8 @@ func ValuesFromSlice[T any](vs []T) (*sppb.Type, []*structpb.Value, error) {
 // from T (see [ValuesFromSlice] for the homogeneity rules). Following the
 // client library's slice handling, a nil slice becomes a typed NULL ARRAY
 // and an empty slice an empty ARRAY.
-func ArrayValueFromSlice[T any](vs []T) (spanner.GenericColumnValue, error) {
-	elemType, gcvs, err := sliceElements(vs)
+func ArrayValueFromSlice[T any](vs []T, opts ...EncodeOption) (spanner.GenericColumnValue, error) {
+	elemType, gcvs, err := sliceElements(vs, newEncodeConfig(opts))
 	if err != nil {
 		return gcv{}, err
 	}
@@ -53,14 +53,14 @@ func ArrayValueFromSlice[T any](vs []T) (spanner.GenericColumnValue, error) {
 
 // sliceElements infers the element type from T and encodes each element,
 // verifying every element's encoded type against the inferred one.
-func sliceElements[T any](vs []T) (*sppb.Type, []spanner.GenericColumnValue, error) {
+func sliceElements[T any](vs []T, cfg encodeConfig) (*sppb.Type, []spanner.GenericColumnValue, error) {
 	elemType, err := TypeFor[T]()
 	if err != nil {
 		return nil, nil, err
 	}
 	gcvs := make([]spanner.GenericColumnValue, len(vs))
 	for i, v := range vs {
-		e, err := ValueOf(v)
+		e, err := encodeValue(cfg, v)
 		if err != nil {
 			return nil, nil, &gcvctor.ArrayElementError{Index: i, Err: err}
 		}

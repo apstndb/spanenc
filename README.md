@@ -53,6 +53,18 @@ Slice helpers enforce homogeneity through the static element type: interface
 element types (which could hold heterogeneous values) are rejected before any
 element is examined.
 
+Options:
+
+- `WithColumns(...)` / `WithoutColumns(...)` — update-mask-style include /
+  exclude column masks for `MutationColumnsAndValues` / `MutationMap`
+  (struct declaration order preserved; unknown columns, read-only columns in
+  an include list, or combining both kinds return `ErrInvalidColumnMask`).
+- `WithLossOfPrecisionHandling(spanner.NumericRound)` — per-call NUMERIC
+  loss-of-precision control for the encoding helpers, reusing the client's
+  enum; the client's package-global `spanner.LossOfPrecisionHandling` is
+  never read. Default: `spanner.NumericError` (validate), unlike the
+  client's global default of NumericRound.
+
 ## Examples
 
 Derive `Read` columns from a tagged struct (the issue #13800 use case):
@@ -68,12 +80,12 @@ columns, _ := spanenc.StructColumns[Singer]() // [SingerId FirstName]
 iter := client.Single().Read(ctx, "Singers", spanner.AllKeys(), columns)
 ```
 
-Mask mutation columns by name:
+Mask mutation columns by name (include or exclude):
 
 ```go
-cols, vals, _ := spanenc.MutationColumnsAndValues(singer)
-// filter cols/vals pairs, then:
-m := spanner.Update("Singers", maskedCols, maskedVals)
+cols, vals, _ := spanenc.MutationColumnsAndValues(singer,
+    spanenc.WithoutColumns("CreatedAt"))
+m := spanner.Update("Singers", cols, vals)
 ```
 
 Stream Go structs through
@@ -105,8 +117,10 @@ Following the client, there are two different struct field listings:
 Deliberate divergences from the client (strictness so malformed GCVs never
 enter the spanvalue stack) are documented in the
 [package documentation](https://pkg.go.dev/github.com/apstndb/spanenc):
-untyped nil and nil struct pointers return errors, NUMERIC precision is always
-validated, and non-finite floats / JSON use gcvctor's canonical wire forms.
+untyped nil and nil struct pointers return errors, NUMERIC precision is
+validated by default (per-call `WithLossOfPrecisionHandling` instead of the
+client's package-global), and non-finite floats / JSON use gcvctor's
+canonical wire forms.
 
 ## Tracking upstream
 

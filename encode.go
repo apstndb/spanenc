@@ -40,7 +40,17 @@ const commitTimestampPlaceholderString = "spanner.commit_timestamp()"
 // Deliberate divergences from the client library are listed in the package
 // documentation; most notably an untyped nil returns [ErrUntypedNil] instead
 // of a NULL without type information.
-func ValueOf(v any) (spanner.GenericColumnValue, error) {
+//
+// Options configure encoding per call; see [WithLossOfPrecisionHandling]
+// for the per-call counterpart of the client's package-global
+// loss-of-precision handling.
+func ValueOf(v any, opts ...EncodeOption) (spanner.GenericColumnValue, error) {
+	return encodeValue(newEncodeConfig(opts), v)
+}
+
+// encodeValue is the option-threaded core of [ValueOf], mirroring the
+// client's encodeValue type switch in the same case order.
+func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	switch x := v.(type) {
 	case nil:
 		return gcv{}, ErrUntypedNil
@@ -125,13 +135,13 @@ func ValueOf(v any) (spanner.GenericColumnValue, error) {
 	case []*float32:
 		return encodeSlice(x, typector.Float32(), pure(gcvctor.Float32FromPtr))
 	case big.Rat:
-		return encodeNumeric(&x)
+		return encodeNumeric(cfg, &x)
 	case []big.Rat:
-		return encodeSlice(x, typector.Numeric(), func(e big.Rat) (gcv, error) { return encodeNumeric(&e) })
+		return encodeSlice(x, typector.Numeric(), func(e big.Rat) (gcv, error) { return encodeNumeric(cfg, &e) })
 	case spanner.NullNumeric:
-		return encodeNullNumeric(x)
+		return encodeNullNumeric(cfg, x)
 	case []spanner.NullNumeric:
-		return encodeSlice(x, typector.Numeric(), encodeNullNumeric)
+		return encodeSlice(x, typector.Numeric(), func(e spanner.NullNumeric) (gcv, error) { return encodeNullNumeric(cfg, e) })
 	case spanner.PGNumeric:
 		return encodePGNumeric(x), nil
 	case []spanner.PGNumeric:
@@ -145,9 +155,9 @@ func ValueOf(v any) (spanner.GenericColumnValue, error) {
 	case []spanner.PGJsonB:
 		return encodeSlice(x, typector.PGJSONB(), encodePGJsonB)
 	case *big.Rat:
-		return encodeNumeric(x)
+		return encodeNumeric(cfg, x)
 	case []*big.Rat:
-		return encodeSlice(x, typector.Numeric(), encodeNumeric)
+		return encodeSlice(x, typector.Numeric(), func(e *big.Rat) (gcv, error) { return encodeNumeric(cfg, e) })
 	case time.Time:
 		return encodeTimestamp(x), nil
 	case []time.Time:
@@ -220,40 +230,40 @@ func ValueOf(v any) (spanner.GenericColumnValue, error) {
 		return gcv{}, fmt.Errorf("%w: %T", ErrUnsupportedType, v)
 	case protoreflect.Enum:
 		if enc, ok := v.(spanner.Encoder); ok {
-			return encodeViaEncoder(enc)
+			return encodeViaEncoder(cfg, enc)
 		}
 		return encodeProtoEnum(x)
 	case spanner.NullProtoEnum:
 		if x.Valid {
-			return ValueOf(x.ProtoEnumVal)
+			return encodeValue(cfg, x.ProtoEnumVal)
 		}
 		return gcv{}, fmt.Errorf("%w: %T with Valid == false", ErrInvalidSource, v)
 	case proto.Message:
 		if enc, ok := v.(spanner.Encoder); ok {
-			return encodeViaEncoder(enc)
+			return encodeViaEncoder(cfg, enc)
 		}
 		return encodeProtoMessage(x)
 	case spanner.NullProtoMessage:
 		if x.Valid {
-			return ValueOf(x.ProtoMessageVal)
+			return encodeValue(cfg, x.ProtoMessageVal)
 		}
 		return gcv{}, fmt.Errorf("%w: %T with Valid == false", ErrInvalidSource, v)
 	default:
 		if enc, ok := v.(spanner.Encoder); ok {
-			return encodeViaEncoder(enc)
+			return encodeViaEncoder(cfg, enc)
 		}
 		if converted, ok := convertCustomValue(v); ok {
-			return ValueOf(converted)
+			return encodeValue(cfg, converted)
 		}
 		t := reflect.TypeOf(v)
 		switch {
 		case t.Kind() == reflect.Struct,
 			t.Kind() == reflect.Pointer && t.Elem().Kind() == reflect.Struct:
-			return encodeStructValue(v)
+			return encodeStructValue(cfg, v)
 		case t.Kind() == reflect.Slice && (t.Elem().Implements(protoMsgReflectType) || t.Elem().Implements(protoEnumReflectType)):
-			return encodeProtoArrayValue(v)
+			return encodeProtoArrayValue(cfg, v)
 		case t.Kind() == reflect.Slice && isStructOrStructPtr(t.Elem()):
-			return encodeStructArrayValue(v)
+			return encodeStructArrayValue(cfg, v)
 		}
 		return gcv{}, fmt.Errorf("%w: %T", ErrUnsupportedType, v)
 	}
@@ -298,18 +308,18 @@ func encodeNullable[T any](valid bool, v T, code sppb.TypeCode, f encodeFunc[T])
 // default NumericError loss-of-precision handling, then defers to
 // [gcvctor.NumericValue] (nil yields a typed NULL NUMERIC, matching *big.Rat
 // handling in encodeValue).
-func encodeNumeric(v *big.Rat) (spanner.GenericColumnValue, error) {
-	if err := validateNumeric(v); err != nil {
+func encodeNumeric(cfg encodeConfig, v *big.Rat) (spanner.GenericColumnValue, error) {
+	if err := validateNumeric(cfg, v); err != nil {
 		return gcv{}, err
 	}
 	return gcvctor.NumericValue(v), nil
 }
 
-func encodeNullNumeric(v spanner.NullNumeric) (spanner.GenericColumnValue, error) {
+func encodeNullNumeric(cfg encodeConfig, v spanner.NullNumeric) (spanner.GenericColumnValue, error) {
 	if !v.Valid {
 		return gcvctor.NullFromCode(sppb.TypeCode_NUMERIC), nil
 	}
-	return encodeNumeric(&v.Numeric)
+	return encodeNumeric(cfg, &v.Numeric)
 }
 
 // encodePGNumeric stores the PGNumeric payload string on the wire as-is,
@@ -366,12 +376,12 @@ func encodeNullTime(v spanner.NullTime) spanner.GenericColumnValue {
 
 // encodeViaEncoder mirrors the client's spanner.Encoder handling: encode
 // whatever EncodeSpanner returns.
-func encodeViaEncoder(enc spanner.Encoder) (spanner.GenericColumnValue, error) {
+func encodeViaEncoder(cfg encodeConfig, enc spanner.Encoder) (spanner.GenericColumnValue, error) {
 	nv, err := enc.EncodeSpanner()
 	if err != nil {
 		return gcv{}, err
 	}
-	return ValueOf(nv)
+	return encodeValue(cfg, nv)
 }
 
 // encodeProtoEnum mirrors the protoreflect.Enum case of encodeValue,
@@ -436,7 +446,7 @@ func isStructOrStructPtr(t reflect.Type) bool {
 // from the `spanner` tag via Lookup (so `spanner:""` yields an unnamed
 // field), and a nil pointer to struct becoming a typed NULL STRUCT whose
 // type is derived from the zero value.
-func encodeStructValue(v any) (spanner.GenericColumnValue, error) {
+func encodeStructValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	typ := reflect.TypeOf(v)
 	val := reflect.ValueOf(v)
 	if typ.Kind() == reflect.Pointer && typ.Elem().Kind() == reflect.Struct {
@@ -445,7 +455,7 @@ func encodeStructValue(v any) (spanner.GenericColumnValue, error) {
 			// Like the client, derive the STRUCT type by encoding the zero
 			// value, so value-dependent fields (for example spanner.Encoder
 			// implementations) type identically to non-NULL encodes.
-			zero, err := encodeStructValue(reflect.Zero(typ).Interface())
+			zero, err := encodeStructValue(cfg, reflect.Zero(typ).Interface())
 			if err != nil {
 				return gcv{}, err
 			}
@@ -471,7 +481,7 @@ func encodeStructValue(v any) (spanner.GenericColumnValue, error) {
 		if !ok {
 			fname = sf.Name
 		}
-		fgcv, err := ValueOf(fval.Interface())
+		fgcv, err := encodeValue(cfg, fval.Interface())
 		if err != nil {
 			return gcv{}, &gcvctor.StructFieldError{Index: i, Name: fname, Err: err}
 		}
@@ -485,13 +495,13 @@ func encodeStructValue(v any) (spanner.GenericColumnValue, error) {
 // STRUCT type comes from the zero value, a nil slice is a typed NULL
 // ARRAY<STRUCT>, and elements (including nil struct pointers) encode like
 // encodeStructValue.
-func encodeStructArrayValue(v any) (spanner.GenericColumnValue, error) {
+func encodeStructArrayValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	rv := reflect.ValueOf(v)
 	etyp := rv.Type().Elem()
 	if etyp.Kind() == reflect.Pointer {
 		etyp = etyp.Elem()
 	}
-	zero, err := encodeStructValue(reflect.Zero(etyp).Interface())
+	zero, err := encodeStructValue(cfg, reflect.Zero(etyp).Interface())
 	if err != nil {
 		return gcv{}, err
 	}
@@ -501,7 +511,7 @@ func encodeStructArrayValue(v any) (spanner.GenericColumnValue, error) {
 	}
 	elems := make([]gcv, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
-		e, err := encodeStructValue(rv.Index(i).Interface())
+		e, err := encodeStructValue(cfg, rv.Index(i).Interface())
 		if err != nil {
 			return gcv{}, &gcvctor.ArrayElementError{Index: i, Err: err}
 		}
@@ -512,7 +522,7 @@ func encodeStructArrayValue(v any) (spanner.GenericColumnValue, error) {
 
 // encodeProtoArrayValue mirrors the client's encodeProtoArray for slices
 // whose element type implements proto.Message or protoreflect.Enum.
-func encodeProtoArrayValue(v any) (spanner.GenericColumnValue, error) {
+func encodeProtoArrayValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	rv := reflect.ValueOf(v)
 	et := rv.Type().Elem()
 	var elemType *sppb.Type
@@ -529,7 +539,7 @@ func encodeProtoArrayValue(v any) (spanner.GenericColumnValue, error) {
 	}
 	elems := make([]gcv, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
-		e, err := ValueOf(rv.Index(i).Interface())
+		e, err := encodeValue(cfg, rv.Index(i).Interface())
 		if err != nil {
 			return gcv{}, &gcvctor.ArrayElementError{Index: i, Err: err}
 		}
@@ -539,12 +549,13 @@ func encodeProtoArrayValue(v any) (spanner.GenericColumnValue, error) {
 }
 
 // validateNumeric checks GoogleSQL NUMERIC bounds (precision 38, scale 9)
-// with the same algorithm as the client's validateNumeric, applied
-// unconditionally like the client's default NumericError handling: render
+// with the same algorithm as the client's validateNumeric, applied under
+// NumericError handling (this package's default; see
+// [WithLossOfPrecisionHandling]): render
 // with one extra fractional digit so an over-scale value survives rounding,
 // then count the digits of each component.
-func validateNumeric(r *big.Rat) error {
-	if r == nil {
+func validateNumeric(cfg encodeConfig, r *big.Rat) error {
+	if cfg.numericRounding() || r == nil {
 		return nil
 	}
 	rendered := strings.TrimPrefix(r.FloatString(spanner.NumericScaleDigits+1), "-")
