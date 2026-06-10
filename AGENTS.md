@@ -89,8 +89,10 @@ round-trips through the real client's `GenericColumnValue.Decode`;
 
 ## Dependencies & releases
 
-- `github.com/apstndb/spanvalue` is currently a **pseudo-version of main**
-  (v0.7.0 predates gcvctor's UTC-timestamp fix); replace with the next tagged
-  release when available.
+- All dependencies are tagged releases (spanvalue v0.7.1+ is required for
+  gcvctor's UTC-timestamp wire format; `structfields` and its nested
+  `structfields/spannertag` module version independently).
 - Per-version truth: GitHub Releases (no in-repo CHANGELOG). Experimental
-  until encodeValue parity is proven; English only on github.com.
+  until encodeValue parity is proven; English only on github.com. Published
+  versions are immutable — never re-tag (proxy.golang.org caches
+  aggressively).
