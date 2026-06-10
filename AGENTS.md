@@ -103,3 +103,6 @@ round-trips through the real client's `GenericColumnValue.Decode`;
   until encodeValue parity is proven; English only on github.com. Published
   versions are immutable — never re-tag (proxy.golang.org caches
   aggressively).
+- **Versioning policy: stay on v0.** Breaking changes bump the minor
+  version; non-breaking changes (features included) bump the patch version.
+  Pre-releases (`-alpha.N`) may precede either.
