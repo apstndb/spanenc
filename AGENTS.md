@@ -1,0 +1,84 @@
+# Agent instructions for `spanenc`
+
+Go library (**Apache-2.0**): convert plain Go values to
+`spanner.GenericColumnValue` (GCV) and derive column names / Spanner types
+from Go structs, **mirroring the Cloud Spanner Go client library's internal
+encoding semantics**. Built on [`spanvalue/gcvctor`](https://github.com/apstndb/spanvalue)
+and [`spantype/typector`](https://github.com/apstndb/spantype). Alias **`sppb`** =
+`cloud.google.com/go/spanner/apiv1/spannerpb`.
+
+## Commands
+
+Tasks and tool versions live in **`mise.toml`** (`go`, `golangci-lint`).
+Prefer **`mise run check`** (fmt-check, vet, build, test, lint); also
+`mise run test-race`, `mise run fmt`. The `Makefile` is a thin wrapper
+delegating to mise. CI (`.github/workflows/go.yml`) runs the same tasks via
+`jdx/mise-action`; keep action versions current (mise-action v4+, checkout v6+).
+
+## Upstream mirror policy (core invariant)
+
+This package is a **behavioral derivative of `cloud.google.com/go/spanner`**;
+the mirrored behavior currently tracks **v1.84.1**. Sources of truth in the
+module cache:
+
+| spanenc | upstream (value.go / mutation.go) |
+|---------|-----------------------------------|
+| `ValueOf` (encode.go) | `encodeValue` type-switch cases, in the same order |
+| `convertCustomValue` / `customBaseGoType` (typeof.go) | `getDecodableSpannerType` + `convertCustomTypeValue` (encode half) |
+| `encodeStructValue` | `encodeStruct` (declaration order, embedded rejected, tag via `Lookup` so `spanner:""` = unnamed field) |
+| `structFields` / `fieldCache` (struct.go) | `fieldCache` + `spannerTagParser` (tag via `Get`, no comma options) |
+| `validateNumeric` | `validateNumeric` (default NumericError handling) |
+| `internal/fields` | **port of `cloud.google.com/go/internal/fields`** — keep diffs minimal, keep provenance headers, excluded from lint via `.golangci.yml` `paths` |
+
+When bumping the spanner dependency: re-audit these functions against
+upstream, update the tracked version in `doc.go` and `README.md`, and extend
+`exactGoTypes` (typeof.go) together with the `ValueOf` switch — the test
+suite cross-checks `TypeFromGoType` against `ValueOf` results.
+
+Mirrored quirks are deliberate (do not "fix"): `==` sentinel comparison for
+`spanner.CommitTimestamp`; nil named UUID-array slices converting to an empty
+`[]uuid.UUID`; two different struct field listings (row-shaped = flattened
+embedded; STRUCT values = embedded rejected); dead `Ptr` branch parity in
+`customBaseGoType`.
+
+## Deliberate divergences (documented in doc.go; keep them)
+
+Strictness so malformed GCVs never enter the spanvalue stack: untyped nil →
+`ErrUntypedNil`; nil struct pointer in row-shaped helpers →
+`ErrNilStructPointer`; GCV input with nil Type rejected; NUMERIC always
+validated; non-finite floats and JSON use gcvctor canonical wire forms
+(strings / unescaped JSON) instead of the client's NumberValue / HTML-escaped
+JSON.
+
+## API map
+
+- `ValueOf` — Go value → GCV (encodeValue mirror).
+- `TypeFor[T]` / `TypeFromGoType` — static type inference; `ErrTypeNotInferable`
+  for Encoder/GCV/NullProto*/interface types (value-dependent).
+- `StructColumns[T]` / `StructColumnsFromGoType` — column names
+  ([googleapis/google-cloud-go#13800](https://github.com/googleapis/google-cloud-go/issues/13800)).
+- `RowTypeFor[T]` / `RowTypeFromGoType` — `*sppb.StructType` for writer metadata.
+- `StructColumnsAndValues` — struct → columns + GCVs (spanvalue/writer
+  `WriteValues`).
+- `MutationColumnsAndValues` / `MutationMap` — struct → plain Go cols/vals or
+  map for `spanner.Insert/Update/Replace(...)` / `*Map` constructors; enables
+  column masking by name. Values are NOT GCV-encoded (the client encodes them).
+- `ValuesFromSlice[T]` / `ArrayValueFromSlice[T]` — homogeneous slices;
+  interface element types rejected via static inference; nil slice = typed
+  NULL ARRAY at the GCV level.
+
+## Tests
+
+`t.Parallel()`, `cmp.Diff` + `protocmp.Transform()`. Expected GCVs built from
+`typector` + `structpb`, not from the helpers under test. Keep: the
+ValueOf↔TypeFromGoType consistency check inside `TestValueOf`; decode
+round-trips through the real client's `GenericColumnValue.Decode`;
+`internal/fields` upstream tests (ported, `tEqual` replaces testutil).
+
+## Dependencies & releases
+
+- `github.com/apstndb/spanvalue` is currently a **pseudo-version of main**
+  (v0.7.0 predates gcvctor's UTC-timestamp fix); replace with the next tagged
+  release when available.
+- Per-version truth: GitHub Releases (no in-repo CHANGELOG). Experimental
+  until encodeValue parity is proven; English only on github.com.
