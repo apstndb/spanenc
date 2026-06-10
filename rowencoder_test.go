@@ -1,0 +1,194 @@
+package spanenc_test
+
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"cloud.google.com/go/spanner"
+	sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
+	"github.com/apstndb/spantype/typector"
+	"github.com/apstndb/spanvalue"
+	"github.com/apstndb/spanvalue/writer"
+	"github.com/google/go-cmp/cmp"
+	"google.golang.org/protobuf/testing/protocmp"
+	"google.golang.org/protobuf/types/known/structpb"
+
+	"github.com/apstndb/spanenc"
+)
+
+func TestRowEncoder(t *testing.T) {
+	t.Parallel()
+
+	enc, err := spanenc.NewRowEncoder[singer]()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff([]string{"SingerId", "Name", "Tags"}, enc.Columns()); diff != "" {
+		t.Errorf("Columns mismatch (-want +got):\n%s", diff)
+	}
+
+	rowType, err := enc.RowType()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantRowType := &sppb.StructType{Fields: []*sppb.StructType_Field{
+		typector.NameCodeToStructTypeField("SingerId", sppb.TypeCode_INT64),
+		typector.NameCodeToStructTypeField("Name", sppb.TypeCode_STRING),
+		typector.NameTypeToStructTypeField("Tags", typector.ElemCodeToArrayType(sppb.TypeCode_STRING)),
+	}}
+	if diff := cmp.Diff(wantRowType, rowType, protocmp.Transform()); diff != "" {
+		t.Errorf("RowType mismatch (-want +got):\n%s", diff)
+	}
+
+	values, err := enc.Values(singer{SingerID: 1, Name: "n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantValues := []spanner.GenericColumnValue{
+		{Type: typector.Int64(), Value: structpb.NewStringValue("1")},
+		{Type: typector.String(), Value: structpb.NewStringValue("n")},
+		{Type: typector.ElemCodeToArrayType(sppb.TypeCode_STRING), Value: structpb.NewNullValue()},
+	}
+	if diff := cmp.Diff(wantValues, values, protocmp.Transform()); diff != "" {
+		t.Errorf("Values mismatch (-want +got):\n%s", diff)
+	}
+
+	t.Run("agrees with StructColumnsAndValues", func(t *testing.T) {
+		t.Parallel()
+		in := singer{SingerID: 2, Name: "x", Tags: []string{"t"}}
+		names, want, err := spanenc.StructColumnsAndValues(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(names, enc.Columns()); diff != "" {
+			t.Errorf("Columns disagree (-StructColumnsAndValues +RowEncoder):\n%s", diff)
+		}
+		got, err := enc.Values(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
+			t.Errorf("Values disagree (-StructColumnsAndValues +RowEncoder):\n%s", diff)
+		}
+	})
+}
+
+func TestRowEncoderMaskAndErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("mask applies to all outputs", func(t *testing.T) {
+		t.Parallel()
+		enc, err := spanenc.NewRowEncoder[singer](spanenc.WithoutColumns("Tags"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]string{"SingerId", "Name"}, enc.Columns()); diff != "" {
+			t.Errorf("Columns mismatch (-want +got):\n%s", diff)
+		}
+		rowType, err := enc.RowType()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(rowType.GetFields()) != 2 {
+			t.Errorf("RowType fields = %v, want 2", rowType.GetFields())
+		}
+		values, err := enc.Values(singer{SingerID: 1, Name: "n", Tags: []string{"dropped"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) != 2 {
+			t.Errorf("Values = %v, want 2 elements", values)
+		}
+	})
+
+	t.Run("include mask may name read-only columns", func(t *testing.T) {
+		t.Parallel()
+		enc, err := spanenc.NewRowEncoder[readOnlyRow](spanenc.WithColumns("Gen"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff([]string{"Gen"}, enc.Columns()); diff != "" {
+			t.Errorf("Columns mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("invalid mask", func(t *testing.T) {
+		t.Parallel()
+		if _, err := spanenc.NewRowEncoder[singer](spanenc.WithColumns("Nope")); !errors.Is(err, spanenc.ErrInvalidColumnMask) {
+			t.Errorf("error = %v, want ErrInvalidColumnMask", err)
+		}
+	})
+
+	t.Run("non-struct", func(t *testing.T) {
+		t.Parallel()
+		if _, err := spanenc.NewRowEncoder[int](); !errors.Is(err, spanenc.ErrNotStruct) {
+			t.Errorf("error = %v, want ErrNotStruct", err)
+		}
+	})
+
+	t.Run("nil pointer row", func(t *testing.T) {
+		t.Parallel()
+		enc, err := spanenc.NewRowEncoder[*singer]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := enc.Values(nil); !errors.Is(err, spanenc.ErrNilStructPointer) {
+			t.Errorf("error = %v, want ErrNilStructPointer", err)
+		}
+		values, err := enc.Values(&singer{SingerID: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(values) != 3 {
+			t.Errorf("Values = %v, want 3 elements", values)
+		}
+	})
+}
+
+// TestRowEncoderWriterIntegration streams a virtual result set built from Go
+// structs through spanvalue/writer, the use case surveyed from spanner-mycli
+// and spannersh.
+func TestRowEncoderWriterIntegration(t *testing.T) {
+	t.Parallel()
+
+	type variable struct {
+		Name  string `spanner:"name"`
+		Value string `spanner:"value"`
+	}
+	enc, err := spanenc.NewRowEncoder[variable]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := enc.ResultSetMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sb strings.Builder
+	w, err := writer.NewCSVWriter(&sb, writer.DelimitedGCVExportOptions(
+		metadata,
+		spanvalue.SimpleFormatConfig(),
+		spanvalue.IndexedUnnamedFieldNamer,
+	)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, v := range []variable{{"AUTOCOMMIT", "TRUE"}, {"READONLY", "FALSE"}} {
+		values, err := enc.Values(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.WriteGCVs(values); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	want := "name,value\nAUTOCOMMIT,TRUE\nREADONLY,FALSE\n"
+	if diff := cmp.Diff(want, sb.String()); diff != "" {
+		t.Errorf("CSV mismatch (-want +got):\n%s", diff)
+	}
+}

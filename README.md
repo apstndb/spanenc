@@ -45,6 +45,7 @@ tracks `cloud.google.com/go/spanner` **v1.91.0**.
 | `RowTypeFor[T]` / `RowTypeFromGoType` | struct type | `*sppb.StructType` row type |
 | `ResultSetMetadataFor[T]` / `ResultSetMetadataFromGoType` | struct type | `*sppb.ResultSetMetadata` (for `writer.WithMetadata`, virtual result sets) |
 | `StructColumnsAndValues` | struct value | `[]string`, `[]GCV` |
+| `NewRowEncoder[T]` | struct type (+ mask) | `*RowEncoder[T]`: compiled `Columns` / `RowType` / `ResultSetMetadata` / per-row `Values` |
 | `MutationColumnsAndValues` | struct value | `[]string`, `[]any` (for `spanner.Insert`/`Update`/`Replace`...) |
 | `MutationMap` | struct value | `map[string]any` (for `spanner.InsertMap`/`UpdateMap`...) |
 | `ParamsMap` | struct value | `map[string]any` (for `spanner.Statement` Params; read-only fields included) |
@@ -99,6 +100,21 @@ Stream Go structs through
 names, values, _ := spanenc.StructColumnsAndValues(singer)
 w, _ := writer.NewCSVWriter(os.Stdout, writer.WithColumnNames(names))
 _ = w.WriteValues(names, values)
+_ = w.Flush()
+```
+
+For many rows of one struct type (for example client-side virtual result
+sets), compile a `RowEncoder` once:
+
+```go
+enc, _ := spanenc.NewRowEncoder[Singer]()
+metadata, _ := enc.ResultSetMetadata()
+w, _ := writer.NewCSVWriter(os.Stdout,
+    writer.DelimitedGCVExportOptions(metadata, spanvalue.SimpleFormatConfig(), spanvalue.IndexedUnnamedFieldNamer)...)
+for _, s := range singers {
+    values, _ := enc.Values(s)
+    _ = w.WriteGCVs(values)
+}
 _ = w.Flush()
 ```
 

@@ -82,6 +82,14 @@ instead of the client's NumberValue / HTML-escaped JSON.
 - `ParamsMap` — struct → plain Go map for `spanner.Statement` Params;
   read-shaped (read-only fields included, include mask may name them); same
   mask options.
+- `ResultSetMetadataFor[T]` / `ResultSetMetadataFromGoType` — RowTypeFor
+  wrapped in `*sppb.ResultSetMetadata` (writer `WithMetadata`, virtual
+  result sets).
+- `RowEncoder[T]` (`NewRowEncoder`) — compiled read-shaped row codec:
+  listing/mask/row type resolved once; `Columns` / `RowType` /
+  `ResultSetMetadata` / `Values(v, encodeOpts...)`. Mask validated like
+  ParamsMap (read-shaped); must stay consistent with
+  StructColumnsAndValues (test enforces).
 - `ValuesFromSlice[T]` / `ArrayValueFromSlice[T]` — homogeneous slices;
   interface element types rejected via static inference; nil slice = typed
   NULL ARRAY at the GCV level.

@@ -1,0 +1,123 @@
+package spanenc
+
+import (
+	"reflect"
+
+	"cloud.google.com/go/spanner"
+	sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
+	"github.com/apstndb/spantype/typector"
+	"github.com/apstndb/spanvalue/gcvctor"
+	"google.golang.org/protobuf/proto"
+
+	fields "github.com/apstndb/structfields"
+)
+
+// RowEncoder is a compiled row codec for a struct type T: the field listing,
+// column mask, and row type are resolved once at construction, so encoding
+// many rows avoids re-deriving them per row (and re-validating the mask) the
+// way repeated [StructColumnsAndValues] calls would.
+//
+// It uses the read-shaped (ToStruct) field listing like
+// [StructColumnsAndValues]: read-only fields are included, and an include
+// mask may name them. Construct with [NewRowEncoder].
+type RowEncoder[T any] struct {
+	fields     fields.List
+	columns    []string
+	rowType    *sppb.StructType
+	rowTypeErr error
+}
+
+// NewRowEncoder compiles a [RowEncoder] for T, which must be a struct or
+// pointer-to-struct type ([ErrNotStruct] otherwise). The optional column
+// mask is validated here once ([ErrInvalidColumnMask] like [ParamsMap]) and
+// applied to every output, keeping struct declaration order.
+func NewRowEncoder[T any](opts ...ColumnMaskOption) (*RowEncoder[T], error) {
+	cfg := newColumnMaskConfig(opts)
+	fl, err := structFields(reflect.TypeFor[T]())
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validate(fl, false); err != nil {
+		return nil, err
+	}
+	kept := make(fields.List, 0, len(fl))
+	columns := make([]string, 0, len(fl))
+	for _, f := range fl {
+		if !cfg.keep(f.Name) {
+			continue
+		}
+		kept = append(kept, f)
+		columns = append(columns, f.Name)
+	}
+	enc := &RowEncoder[T]{fields: kept, columns: columns}
+	enc.rowType, enc.rowTypeErr = rowTypeOfFields(kept)
+	return enc, nil
+}
+
+// rowTypeOfFields derives the masked row type from an already-listed field
+// set, like [RowTypeFromGoType] does for the full listing.
+func rowTypeOfFields(fl fields.List) (*sppb.StructType, error) {
+	stf := make([]*sppb.StructType_Field, len(fl))
+	for i, f := range fl {
+		ft, err := TypeFromGoType(f.Type)
+		if err != nil {
+			return nil, &gcvctor.StructFieldError{Index: i, Name: f.Name, Err: err}
+		}
+		stf[i] = typector.NameTypeToStructTypeField(f.Name, ft)
+	}
+	return typector.StructTypeFieldsToStructType(stf).GetStructType(), nil
+}
+
+// Columns returns the masked column names in struct declaration order.
+// The returned slice is a copy.
+func (e *RowEncoder[T]) Columns() []string {
+	out := make([]string, len(e.columns))
+	copy(out, e.columns)
+	return out
+}
+
+// RowType returns the masked row type with statically inferred field types
+// (see [TypeFromGoType]); fields whose Spanner type is not inferable from
+// the Go type make RowType fail while [RowEncoder.Values] may still succeed.
+// The returned message is a fresh clone.
+func (e *RowEncoder[T]) RowType() (*sppb.StructType, error) {
+	if e.rowTypeErr != nil {
+		return nil, e.rowTypeErr
+	}
+	return proto.Clone(e.rowType).(*sppb.StructType), nil
+}
+
+// ResultSetMetadata wraps [RowEncoder.RowType] into a
+// [sppb.ResultSetMetadata] for result-set consumers such as
+// [github.com/apstndb/spanvalue/writer]'s WithMetadata.
+func (e *RowEncoder[T]) ResultSetMetadata() (*sppb.ResultSetMetadata, error) {
+	rowType, err := e.RowType()
+	if err != nil {
+		return nil, err
+	}
+	return &sppb.ResultSetMetadata{RowType: rowType}, nil
+}
+
+// Values encodes one row: the masked fields of v as
+// [spanner.GenericColumnValue] slices aligned with [RowEncoder.Columns].
+// A nil pointer v returns [ErrNilStructPointer]. Options configure the
+// per-field encoding; see [WithLossOfPrecisionHandling].
+func (e *RowEncoder[T]) Values(v T, opts ...EncodeOption) ([]spanner.GenericColumnValue, error) {
+	cfg := newEncodeConfig(opts)
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil, ErrNilStructPointer
+		}
+		rv = rv.Elem()
+	}
+	values := make([]spanner.GenericColumnValue, len(e.fields))
+	for i, f := range e.fields {
+		fgcv, err := encodeValue(cfg, rv.FieldByIndex(f.Index).Interface())
+		if err != nil {
+			return nil, &gcvctor.StructFieldError{Index: i, Name: f.Name, Err: err}
+		}
+		values[i] = fgcv
+	}
+	return values, nil
+}

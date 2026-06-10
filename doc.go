@@ -30,6 +30,9 @@
 //     writer metadata and client-side virtual result sets.
 //   - [StructColumnsAndValues]: one struct → column names + GCVs, for
 //     GCV-level consumers such as [github.com/apstndb/spanvalue/writer].
+//   - [RowEncoder] ([NewRowEncoder]): compiled row codec for streaming many
+//     rows of one struct type — field listing, column mask, and row type
+//     resolved once; per row only [RowEncoder.Values] runs.
 //   - [MutationColumnsAndValues] / [MutationMap]: one struct → cols/vals or
 //     map with plain Go values, for the non-Struct mutation constructors
 //     ([cloud.google.com/go/spanner.Update],
