@@ -23,9 +23,11 @@
 //   - [StructColumns] / [StructColumnsFromGoType]: `spanner`-tagged column
 //     names from a struct type, as requested in
 //     https://github.com/googleapis/google-cloud-go/issues/13800.
-//   - [RowTypeFor] / [RowTypeFromGoType]: row-shaped
-//     [cloud.google.com/go/spanner/apiv1/spannerpb.StructType] for writer
-//     metadata.
+//   - [RowTypeFor] / [RowTypeFromGoType] and [ResultSetMetadataFor] /
+//     [ResultSetMetadataFromGoType]: row-shaped
+//     [cloud.google.com/go/spanner/apiv1/spannerpb.StructType] /
+//     [cloud.google.com/go/spanner/apiv1/spannerpb.ResultSetMetadata] for
+//     writer metadata and client-side virtual result sets.
 //   - [StructColumnsAndValues]: one struct → column names + GCVs, for
 //     GCV-level consumers such as [github.com/apstndb/spanvalue/writer].
 //   - [MutationColumnsAndValues] / [MutationMap]: one struct → cols/vals or

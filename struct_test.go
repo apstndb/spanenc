@@ -105,6 +105,30 @@ func TestRowTypeFor(t *testing.T) {
 	}
 }
 
+func TestResultSetMetadataFor(t *testing.T) {
+	t.Parallel()
+
+	got, err := spanenc.ResultSetMetadataFor[singer]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := &sppb.ResultSetMetadata{RowType: &sppb.StructType{Fields: []*sppb.StructType_Field{
+		typector.NameCodeToStructTypeField("SingerId", sppb.TypeCode_INT64),
+		typector.NameCodeToStructTypeField("Name", sppb.TypeCode_STRING),
+		typector.NameTypeToStructTypeField("Tags", typector.ElemCodeToArrayType(sppb.TypeCode_STRING)),
+	}}}
+	if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
+		t.Errorf("ResultSetMetadataFor mismatch (-want +got):\n%s", diff)
+	}
+
+	t.Run("non-struct", func(t *testing.T) {
+		t.Parallel()
+		if _, err := spanenc.ResultSetMetadataFor[int](); !errors.Is(err, spanenc.ErrNotStruct) {
+			t.Errorf("error = %v, want ErrNotStruct", err)
+		}
+	})
+}
+
 func TestStructColumnsAndValues(t *testing.T) {
 	t.Parallel()
 

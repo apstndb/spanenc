@@ -43,6 +43,7 @@ tracks `cloud.google.com/go/spanner` **v1.91.0**.
 | `TypeFor[T]` / `TypeFromGoType` | Go type | `*sppb.Type` |
 | `StructColumns[T]` / `StructColumnsFromGoType` | struct type | `[]string` column names |
 | `RowTypeFor[T]` / `RowTypeFromGoType` | struct type | `*sppb.StructType` row type |
+| `ResultSetMetadataFor[T]` / `ResultSetMetadataFromGoType` | struct type | `*sppb.ResultSetMetadata` (for `writer.WithMetadata`, virtual result sets) |
 | `StructColumnsAndValues` | struct value | `[]string`, `[]GCV` |
 | `MutationColumnsAndValues` | struct value | `[]string`, `[]any` (for `spanner.Insert`/`Update`/`Replace`...) |
 | `MutationMap` | struct value | `map[string]any` (for `spanner.InsertMap`/`UpdateMap`...) |

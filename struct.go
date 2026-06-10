@@ -87,6 +87,24 @@ func RowTypeFor[T any]() (*sppb.StructType, error) {
 	return RowTypeFromGoType(reflect.TypeFor[T]())
 }
 
+// ResultSetMetadataFor wraps [RowTypeFor] into a
+// [sppb.ResultSetMetadata], the shape expected by result-set consumers such
+// as [github.com/apstndb/spanvalue/writer]'s WithMetadata. It suits
+// client-side virtual result sets (status rows, SHOW-style outputs) whose
+// rows are Go structs rather than server responses.
+func ResultSetMetadataFor[T any]() (*sppb.ResultSetMetadata, error) {
+	return ResultSetMetadataFromGoType(reflect.TypeFor[T]())
+}
+
+// ResultSetMetadataFromGoType is [ResultSetMetadataFor] for a [reflect.Type].
+func ResultSetMetadataFromGoType(t reflect.Type) (*sppb.ResultSetMetadata, error) {
+	rowType, err := RowTypeFromGoType(t)
+	if err != nil {
+		return nil, err
+	}
+	return &sppb.ResultSetMetadata{RowType: rowType}, nil
+}
+
 // RowTypeFromGoType is [RowTypeFor] for a [reflect.Type].
 func RowTypeFromGoType(t reflect.Type) (*sppb.StructType, error) {
 	fl, err := structFields(t)
