@@ -1,28 +1,5 @@
-.PHONY: build check fmt fmt-check lint test test-v vet
+# Thin compatibility wrapper; tasks and tool versions live in mise.toml.
+.PHONY: build check fmt fmt-check lint test test-race vet
 
-build:
-	go build ./...
-
-check: fmt-check vet build test lint
-
-fmt:
-	go fmt ./...
-
-fmt-check:
-	@files="$$(git ls-files -z -- '*.go' | xargs -0 sh -c 'if [ "$$#" -eq 0 ]; then exit 0; fi; gofmt -l "$$@"' sh)"; \
-	if [ -n "$$files" ]; then \
-		echo "$$files"; \
-		exit 1; \
-	fi
-
-lint:
-	golangci-lint run
-
-test:
-	go test ./...
-
-test-v:
-	go test -v ./...
-
-vet:
-	go vet ./...
+build check fmt fmt-check lint test test-race vet:
+	mise run $@

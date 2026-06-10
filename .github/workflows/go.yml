@@ -1,5 +1,6 @@
-# CI mirrors local `make check` (fmt-check, vet, build, test, lint) plus
-# race detection and Example tests.
+# CI runs the same mise tasks as local development (`mise run check`);
+# tool versions come from mise.toml via jdx/mise-action.
+# https://mise.jdx.dev/continuous-integration.html
 
 name: Go
 
@@ -14,28 +15,17 @@ permissions:
 
 jobs:
   check:
-    name: make check
+    name: mise run check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: jdx/mise-action@v3
         with:
-          go-version-file: go.mod
-          cache: false
+          version: 2026.6.1
 
-      - name: Clear Go caches
-        run: go clean -cache -testcache
-
-      - name: Install golangci-lint
-        uses: golangci/golangci-lint-action@v7
-        with:
-          version: v2.11.4
-          install-only: true
-
-      - name: make check
-        run: make check
+      - name: mise run check
+        run: mise run check
 
   race:
     name: race detector
@@ -43,14 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: jdx/mise-action@v3
         with:
-          go-version-file: go.mod
-          cache: false
+          version: 2026.6.1
 
-      - name: Clear Go caches
-        run: go clean -cache -testcache
-
-      - name: Test with race detector
-        run: go test -race ./...
+      - name: mise run test-race
+        run: mise run test-race
