@@ -294,11 +294,11 @@ func TestMutationMap(t *testing.T) {
 	})
 	for _, tt := range []struct {
 		desc string
-		opts []spanenc.MutationOption
+		opts []spanenc.ColumnMaskOption
 	}{
-		{"include unknown column", []spanenc.MutationOption{spanenc.WithColumns("Nope")}},
-		{"exclude unknown column", []spanenc.MutationOption{spanenc.WithoutColumns("Nope")}},
-		{"include and exclude combined", []spanenc.MutationOption{spanenc.WithColumns("SingerId"), spanenc.WithoutColumns("Name")}},
+		{"include unknown column", []spanenc.ColumnMaskOption{spanenc.WithColumns("Nope")}},
+		{"exclude unknown column", []spanenc.ColumnMaskOption{spanenc.WithoutColumns("Nope")}},
+		{"include and exclude combined", []spanenc.ColumnMaskOption{spanenc.WithColumns("SingerId"), spanenc.WithoutColumns("Name")}},
 	} {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
