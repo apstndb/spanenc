@@ -54,6 +54,18 @@ func NewRowEncoder[T any](opts ...ColumnMaskOption) (*RowEncoder[T], error) {
 	return enc, nil
 }
 
+// MustNewRowEncoder is [NewRowEncoder] panicking on error, for package-level
+// encoders of compile-time-known struct types where a failure is a
+// programming error. Prefer it over local panic-on-error wrappers, like the
+// Must* constructors in [github.com/apstndb/spanvalue/gcvctor].
+func MustNewRowEncoder[T any](opts ...ColumnMaskOption) *RowEncoder[T] {
+	enc, err := NewRowEncoder[T](opts...)
+	if err != nil {
+		panic(err)
+	}
+	return enc
+}
+
 // rowTypeOfFields derives the masked row type from an already-listed field
 // set, like [RowTypeFromGoType] does for the full listing.
 func rowTypeOfFields(fl fields.List) (*sppb.StructType, error) {

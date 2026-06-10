@@ -99,12 +99,18 @@
 // styling, or flow into [github.com/apstndb/spanvalue/writer] export. If a
 // code path renders rows whose values are already display strings (a
 // SHOW-style key/value listing of pre-formatted text), building GCVs just
-// to format them back into strings adds work for no benefit — keep such
-// paths as plain string rows.
+// to format them back into strings adds work for no display benefit — keep
+// such paths as plain string rows, unless routing them through GCVs buys
+// you a single cell pipeline shared with server results (NULL/type
+// styling, writer export) or scaffolds call sites that will gain typed
+// columns; if you adopt it for that reason, record it in a comment so a
+// later cleanup does not undo it as an accident.
 //
 // For display cells, pass encoded values to
 // [github.com/apstndb/spanvalue.FormatRowColumns] instead of writing a
-// per-application GCV-to-string bridge. Prefer [RowEncoder.Columns] when
+// per-application GCV-to-string bridge, and detect SQL NULL cells with
+// [github.com/apstndb/spanvalue.IsNull] instead of inspecting the protobuf
+// value kind by hand. Prefer [RowEncoder.Columns] when
 // consumers only need column names; reach for [RowEncoder.ResultSetMetadata]
 // or [RowTypeFor] only when they need Spanner types — switching a consumer
 // from names to metadata typically changes how it renders headers.

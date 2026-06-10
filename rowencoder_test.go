@@ -121,6 +121,19 @@ func TestRowEncoderMaskAndErrors(t *testing.T) {
 		}
 	})
 
+	t.Run("MustNewRowEncoder", func(t *testing.T) {
+		t.Parallel()
+		if got := spanenc.MustNewRowEncoder[singer]().Columns(); len(got) != 3 {
+			t.Errorf("Columns = %v, want 3 names", got)
+		}
+		defer func() {
+			if recover() == nil {
+				t.Error("MustNewRowEncoder[int]: want panic, got none")
+			}
+		}()
+		spanenc.MustNewRowEncoder[int]()
+	})
+
 	t.Run("non-struct", func(t *testing.T) {
 		t.Parallel()
 		if _, err := spanenc.NewRowEncoder[int](); !errors.Is(err, spanenc.ErrNotStruct) {
