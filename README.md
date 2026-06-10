@@ -1,0 +1,127 @@
+# spanenc
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/apstndb/spanenc.svg)](https://pkg.go.dev/github.com/apstndb/spanenc)
+
+Convert plain Go values into Cloud Spanner `GenericColumnValue` (GCV) values
+and derive column names and Spanner types from Go structs, following the
+[Cloud Spanner Go client library](https://pkg.go.dev/cloud.google.com/go/spanner)'s
+own encoding semantics: the `spanner` struct tag rules and the Go type
+coverage of statement parameters and mutations.
+
+The client library keeps its encoding internal (`encodeValue`,
+`structToMutationParams`, and the internal `fields` cache). This package
+mirrors those semantics on top of
+[`github.com/apstndb/spanvalue/gcvctor`](https://pkg.go.dev/github.com/apstndb/spanvalue/gcvctor)
+constructors, so the results compose with the
+[spanvalue](https://github.com/apstndb/spanvalue) formatting and writer stack.
+
+**Status: experimental.** The API may change while `encodeValue` parity is
+proven against client library releases. The mirrored behavior currently
+tracks `cloud.google.com/go/spanner` **v1.84.1**.
+
+## Motivation
+
+- [googleapis/google-cloud-go#13800](https://github.com/googleapis/google-cloud-go/issues/13800)
+  asks for a `StructColumns()` helper that derives `Read` columns from the
+  same struct used with `Row.ToStruct`. [`StructColumns`](https://pkg.go.dev/github.com/apstndb/spanenc#StructColumns)
+  provides it with the exact field listing the client uses.
+- The client offers no public Go value → `*structpb.Value` / `*sppb.Type`
+  encoding, but GCV-level tooling (exporters, REPLs, test fixtures, proto-level
+  API callers) needs one that behaves identically to the client.
+- Mutation constructors come in three flavors (`Update`, `UpdateMap`,
+  `UpdateStruct`); only the struct flavor understands tags, and it cannot mask
+  columns. [`MutationColumnsAndValues`](https://pkg.go.dev/github.com/apstndb/spanenc#MutationColumnsAndValues) /
+  [`MutationMap`](https://pkg.go.dev/github.com/apstndb/spanenc#MutationMap)
+  extract tag-derived cols/vals (plain Go values, encoded later by the client
+  itself) so the other two flavors get tag support and per-column masking.
+
+## API overview
+
+| Function | Input | Output |
+|----------|-------|--------|
+| `ValueOf` | Go value | `spanner.GenericColumnValue` |
+| `TypeFor[T]` / `TypeFromGoType` | Go type | `*sppb.Type` |
+| `StructColumns[T]` / `StructColumnsFromGoType` | struct type | `[]string` column names |
+| `RowTypeFor[T]` / `RowTypeFromGoType` | struct type | `*sppb.StructType` row type |
+| `StructColumnsAndValues` | struct value | `[]string`, `[]GCV` |
+| `MutationColumnsAndValues` | struct value | `[]string`, `[]any` (for `spanner.Insert`/`Update`/`Replace`...) |
+| `MutationMap` | struct value | `map[string]any` (for `spanner.InsertMap`/`UpdateMap`...) |
+| `ValuesFromSlice[T]` | homogeneous slice | `*sppb.Type` (element), `[]*structpb.Value` |
+| `ArrayValueFromSlice[T]` | homogeneous slice | ARRAY GCV (nil slice → typed NULL ARRAY) |
+
+Slice helpers enforce homogeneity through the static element type: interface
+element types (which could hold heterogeneous values) are rejected before any
+element is examined.
+
+## Examples
+
+Derive `Read` columns from a tagged struct (the issue #13800 use case):
+
+```go
+type Singer struct {
+    SingerID  int64 `spanner:"SingerId"`
+    FirstName string
+    Internal  string `spanner:"-"`
+}
+
+columns, _ := spanenc.StructColumns[Singer]() // [SingerId FirstName]
+iter := client.Single().Read(ctx, "Singers", spanner.AllKeys(), columns)
+```
+
+Mask mutation columns by name:
+
+```go
+cols, vals, _ := spanenc.MutationColumnsAndValues(singer)
+// filter cols/vals pairs, then:
+m := spanner.Update("Singers", maskedCols, maskedVals)
+```
+
+Stream Go structs through spanvalue/writer:
+
+```go
+names, values, _ := spanenc.StructColumnsAndValues(singer)
+w, _ := writer.NewCSVWriter(os.Stdout, writer.WithColumnNames(names))
+_ = w.WriteValues(names, values)
+_ = w.Flush()
+```
+
+## Semantics notes
+
+Following the client, there are two different struct field listings:
+
+- **Row-shaped** (`StructColumns`, `RowTypeFor`, `StructColumnsAndValues`,
+  `MutationColumnsAndValues`, `MutationMap`): the mutation/`ToStruct` listing
+  — exported fields, embedded struct fields flattened with Go's shadowing
+  rules, `spanner:"-"` skipped, declaration order.
+- **STRUCT-typed values** (`ValueOf` on a struct, `TypeFor`): the
+  `encodeStruct` listing — declaration order, embedded fields rejected,
+  `spanner:""` producing an unnamed STRUCT field.
+
+Deliberate divergences from the client (strictness so malformed GCVs never
+enter the spanvalue stack) are documented in the
+[package documentation](https://pkg.go.dev/github.com/apstndb/spanenc):
+untyped nil and nil struct pointers return errors, NUMERIC precision is always
+validated, and non-finite floats / JSON use gcvctor's canonical wire forms.
+
+## Tracking upstream
+
+This package is, by design, a behavioral derivative of
+[googleapis/google-cloud-go](https://github.com/googleapis/google-cloud-go)'s
+`spanner` package:
+
+- `internal/fields` is a port of `cloud.google.com/go/internal/fields`
+  (Apache License 2.0, Copyright Google LLC), with provenance noted in file
+  headers.
+- `ValueOf` / `TypeFromGoType` mirror `encodeValue` and
+  `getDecodableSpannerType`; new client-supported Go types and Spanner types
+  must be added here when upstream adds them.
+
+That is why this module lives in its own Apache-2.0 repository rather than in
+the MIT-licensed spanvalue module. When bumping the
+`cloud.google.com/go/spanner` dependency, re-audit the mirrored functions and
+update the tracked version in the package documentation.
+
+## License
+
+Apache License 2.0. Portions Copyright Google LLC (see file headers in
+`internal/fields`).

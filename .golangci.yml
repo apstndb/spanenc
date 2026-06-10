@@ -1,0 +1,25 @@
+version: "2"
+
+linters:
+  # Matches golangci-lint v2 implicit default before this file existed.
+  default: standard
+  enable:
+    - godoclint
+    - errorlint
+    - misspell
+    # Includes forvar (loop-variable copy) and rangeint; subsumes copyloopvar for our tree.
+    - modernize
+  exclusions:
+    rules:
+      - path: _test\.go$
+        linters:
+          - godoclint
+    paths:
+      # Port of cloud.google.com/go/internal/fields; keep diffs against
+      # upstream minimal instead of satisfying local linters.
+      - internal/fields
+  settings:
+    godoclint:
+      default: basic
+      enable:
+        - no-unused-link
