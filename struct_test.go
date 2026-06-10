@@ -88,6 +88,34 @@ func TestStructColumns(t *testing.T) {
 	})
 }
 
+// TestTagOptionShapes pins the README FAQ: row-shaped helpers parse tag
+// options while STRUCT-shaped typing mirrors the client's raw-tag
+// encodeStruct, leaking options into STRUCT field names verbatim.
+func TestTagOptionShapes(t *testing.T) {
+	t.Parallel()
+
+	type tagged struct {
+		Gen string `spanner:"Name;readonly"`
+	}
+
+	cols, err := spanenc.StructColumns[tagged]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if diff := cmp.Diff([]string{"Name"}, cols); diff != "" {
+		t.Errorf("row-shaped columns mismatch (-want +got):\n%s", diff)
+	}
+
+	typ, err := spanenc.TypeFor[tagged]()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := typ.GetStructType().GetFields()
+	if len(fields) != 1 || fields[0].GetName() != "Name;readonly" {
+		t.Errorf("STRUCT-shaped fields = %v, want one field literally named %q", fields, "Name;readonly")
+	}
+}
+
 func TestRowTypeFor(t *testing.T) {
 	t.Parallel()
 

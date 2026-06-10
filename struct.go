@@ -153,7 +153,8 @@ func structValue(v any) (reflect.Value, fields.List, error) {
 // into parallel column-name and [spanner.GenericColumnValue] slices using
 // the ToStruct-shaped field listing (see [StructColumns]; read-only fields
 // included) and [ValueOf] for each field. The result feeds GCV-level
-// consumers such as [github.com/apstndb/spanvalue/writer]'s WriteValues, and
+// consumers such as [github.com/apstndb/spanvalue/writer]'s WriteValues or
+// [github.com/apstndb/spanvalue.FormatRowColumns] for display cells, and
 // stays aligned with [RowTypeFor].
 //
 // For the client library's own mutation constructors, use

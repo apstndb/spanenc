@@ -70,6 +70,11 @@ func rowTypeOfFields(fl fields.List) (*sppb.StructType, error) {
 
 // Columns returns the masked column names in struct declaration order.
 // The returned slice is a copy.
+//
+// Prefer Columns when consumers only need names (string-only headers);
+// use [RowEncoder.ResultSetMetadata] only when they need Spanner types —
+// switching a consumer from names to metadata typically changes how it
+// renders headers.
 func (e *RowEncoder[T]) Columns() []string {
 	out := make([]string, len(e.columns))
 	copy(out, e.columns)
@@ -102,6 +107,10 @@ func (e *RowEncoder[T]) ResultSetMetadata() (*sppb.ResultSetMetadata, error) {
 // [spanner.GenericColumnValue] slices aligned with [RowEncoder.Columns].
 // A nil pointer v returns [ErrNilStructPointer]. Options configure the
 // per-field encoding; see [WithLossOfPrecisionHandling].
+//
+// For display cells, pass the result to
+// [github.com/apstndb/spanvalue.FormatRowColumns]; for file export, pass it
+// to a [github.com/apstndb/spanvalue/writer] writer.
 func (e *RowEncoder[T]) Values(v T, opts ...EncodeOption) ([]spanner.GenericColumnValue, error) {
 	cfg := newEncodeConfig(opts)
 	rv := reflect.ValueOf(v)
