@@ -13,6 +13,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Node.js 24 becomes the Actions default on 2026-06-16; opt in now so
+  # jdx/mise-action is verified against it before the forced switch.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   check:
     name: mise run check
