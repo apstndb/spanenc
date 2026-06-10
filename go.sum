@@ -26,8 +26,8 @@ github.com/apstndb/spantype v0.3.11 h1:wKue4WLYGT82MH3B3TRSFn8tWIbk1Geczs+5BAEtn
 github.com/apstndb/spantype v0.3.11/go.mod h1:9eHowE7LcJ155ukCYUyuNzVAw9Ne0GXPXpHmu+iaMyk=
 github.com/apstndb/spanvalue v0.7.1-0.20260610130420-cd4dbe65d5df h1:kXOqJU5hZuzwXe7NgJyk2P/zGKwkh/n8ERTID5mVrrU=
 github.com/apstndb/spanvalue v0.7.1-0.20260610130420-cd4dbe65d5df/go.mod h1:bqVJYydQf+D0Tux1LtyRlREPVwrVYNG+1usZJ489GTA=
-github.com/apstndb/structfields v0.1.0 h1:TQbi8EpzLyDr1GOsLWJfMQrtw+cq7BQhNCHhqZTCtEg=
-github.com/apstndb/structfields v0.1.0/go.mod h1:iZuSnr5cvgVvMaEhm0ceB+auA+MeNmA1mtnBA05m9Qw=
+github.com/apstndb/structfields v0.1.1-0.20260610150730-21748e6d1f29 h1:P7B3S8A1EqSrxJyijpM9psvxsncQdf+aEqGtSHesjuQ=
+github.com/apstndb/structfields v0.1.1-0.20260610150730-21748e6d1f29/go.mod h1:iZuSnr5cvgVvMaEhm0ceB+auA+MeNmA1mtnBA05m9Qw=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
 github.com/cespare/xxhash/v2 v2.3.0/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=

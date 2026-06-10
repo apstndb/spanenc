@@ -9,7 +9,7 @@
 // mirrors those semantics on top of [github.com/apstndb/spanvalue/gcvctor]
 // constructors so the results compose with the spanvalue formatting and
 // writer stack. The mirrored behavior tracks cloud.google.com/go/spanner
-// v1.84.1.
+// v1.91.0.
 //
 // # API overview
 //
@@ -45,10 +45,18 @@
 //     [StructColumnsAndValues], [MutationColumnsAndValues], [MutationMap])
 //     use the mutation/ToStruct listing: exported fields, embedded struct
 //     fields flattened with Go's shadowing rules, `spanner:"-"` skipped,
-//     declaration order.
+//     declaration order. Tags split on ";" with the column name first;
+//     `spanner:"->"` or a `readonly` part marks the field read-only (since
+//     spanner v1.86.0). Read-only fields stay in the read-shaped listings
+//     ([StructColumns], [RowTypeFor], [StructColumnsAndValues]) and are
+//     excluded from the write-shaped ones ([MutationColumnsAndValues],
+//     [MutationMap]), mirroring structToMutationParams.
 //   - STRUCT-typed values ([ValueOf] on a struct, [TypeFor]) use the
 //     encodeStruct listing: declaration order, embedded fields rejected with
 //     [ErrEmbeddedStructField], and `spanner:""` producing an unnamed field.
+//     encodeStruct reads the raw tag, so tag options leak into STRUCT field
+//     names verbatim (`spanner:"Name;readonly"` yields a field literally
+//     named "Name;readonly"); this mirrors the client.
 //
 // # Divergences from the client library
 //

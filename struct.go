@@ -10,28 +10,26 @@ import (
 	"github.com/apstndb/spanvalue/gcvctor"
 
 	fields "github.com/apstndb/structfields"
+	"github.com/apstndb/structfields/spannertag"
 )
 
-// spannerTagParser mirrors the client's spannerTagParser: the whole
-// `spanner` tag value is the column name (no comma-separated options), and
-// `spanner:"-"` skips the field. An empty or absent tag falls back to the
-// Go field name.
-func spannerTagParser(t reflect.StructTag) (name string, keep bool, other any, err error) {
-	if s := t.Get("spanner"); s != "" {
-		if s == "-" {
-			return "", false, nil, nil
-		}
-		return s, true, nil, nil
-	}
-	return "", true, nil, nil
-}
+// fieldCache lists struct fields with the client's exact `spanner` tag
+// semantics; the parser and cache are the structfields ports of the
+// client's unexported spannerTagParser and fieldCache.
+var fieldCache = spannertag.Cache
 
-var fieldCache = fields.NewCache(spannerTagParser, nil, nil)
+// isReadOnlyField reports whether a listed field carries the read-only tag
+// (`spanner:"->"` or `spanner:"Name;readonly"`, since spanner v1.86.0).
+func isReadOnlyField(f fields.Field) bool {
+	tag, ok := f.ParsedTag.(spannertag.Tag)
+	return ok && tag.ReadOnly
+}
 
 // structFields lists the row-shaped fields of a struct type with the same
 // rules the client uses for mutations and ToStruct: exported fields,
 // embedded structs flattened with Go's shadowing rules, `spanner` tag names,
-// declaration order.
+// declaration order. Read-only fields are included; write-shaped helpers
+// filter them out, mirroring structToMutationParams.
 func structFields(t reflect.Type) (fields.List, error) {
 	if t == nil {
 		return nil, ErrNotStruct
@@ -47,9 +45,12 @@ func structFields(t reflect.Type) (fields.List, error) {
 
 // StructColumns returns the column names derived from T's fields and
 // `spanner` tags, in declaration order, with the same field listing the
-// client library uses for mutations ([cloud.google.com/go/spanner.InsertStruct])
-// and [cloud.google.com/go/spanner.Row.ToStruct]: exported fields only,
-// embedded struct fields flattened, `spanner:"-"` skipped.
+// client library uses for [cloud.google.com/go/spanner.Row.ToStruct]:
+// exported fields only, embedded struct fields flattened, `spanner:"-"`
+// skipped. Read-only fields (`spanner:"->"` or `spanner:"Name;readonly"`)
+// are included, because they are readable; the write-shaped
+// [MutationColumnsAndValues] and [MutationMap] exclude them like the
+// client's mutation constructors do.
 //
 // It is the spanvalue-side answer to the StructColumns helper requested in
 // https://github.com/googleapis/google-cloud-go/issues/13800, typically used
@@ -73,8 +74,8 @@ func StructColumnsFromGoType(t reflect.Type) ([]string, error) {
 }
 
 // RowTypeFor returns the [sppb.StructType] describing a row of T, pairing
-// [StructColumns] names with statically inferred field types (see
-// [TypeFromGoType]). It suits writer metadata such as
+// [StructColumns] names (read-only fields included) with statically inferred
+// field types (see [TypeFromGoType]). It suits writer metadata such as
 // [github.com/apstndb/spanvalue/writer]'s WithRowType, or the row_type of a
 // ResultSetMetadata.
 //
@@ -132,13 +133,14 @@ func structValue(v any) (reflect.Value, fields.List, error) {
 
 // StructColumnsAndValues converts a struct (or non-nil pointer to struct)
 // into parallel column-name and [spanner.GenericColumnValue] slices using
-// the client's mutation field listing (see [StructColumns]) and [ValueOf]
-// for each field. The result feeds GCV-level consumers such as
-// [github.com/apstndb/spanvalue/writer]'s WriteValues.
+// the ToStruct-shaped field listing (see [StructColumns]; read-only fields
+// included) and [ValueOf] for each field. The result feeds GCV-level
+// consumers such as [github.com/apstndb/spanvalue/writer]'s WriteValues, and
+// stays aligned with [RowTypeFor].
 //
 // For the client library's own mutation constructors, use
 // [MutationColumnsAndValues] or [MutationMap] instead, which keep plain Go
-// values and let the client encode them.
+// values, exclude read-only fields, and let the client encode the values.
 func StructColumnsAndValues(v any) ([]string, []spanner.GenericColumnValue, error) {
 	rv, fl, err := structValue(v)
 	if err != nil {
@@ -159,10 +161,12 @@ func StructColumnsAndValues(v any) ([]string, []spanner.GenericColumnValue, erro
 
 // MutationColumnsAndValues extracts column names and plain Go field values
 // from a struct (or non-nil pointer to struct), mirroring the client's
-// structToMutationParams. The results fit the cols/vals form of mutation
-// constructors such as [spanner.Insert], [spanner.Update], and
-// [spanner.Replace], so callers can mask columns by name before building the
-// mutation — something the *Struct constructors cannot do.
+// structToMutationParams: read-only fields (`spanner:"->"` or
+// `spanner:"Name;readonly"`, since spanner v1.86.0) are excluded from the
+// results. The results fit the cols/vals form of mutation constructors such
+// as [spanner.Insert], [spanner.Update], and [spanner.Replace], so callers
+// can mask columns by name before building the mutation — something the
+// *Struct constructors cannot do.
 //
 // Values are returned as-is (no GCV conversion); the client library encodes
 // them when the mutation is applied, so this helper accepts whatever
@@ -173,11 +177,14 @@ func MutationColumnsAndValues(v any) ([]string, []any, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	cols := make([]string, len(fl))
-	vals := make([]any, len(fl))
-	for i, f := range fl {
-		cols[i] = f.Name
-		vals[i] = rv.FieldByIndex(f.Index).Interface()
+	cols := make([]string, 0, len(fl))
+	vals := make([]any, 0, len(fl))
+	for _, f := range fl {
+		if isReadOnlyField(f) {
+			continue
+		}
+		cols = append(cols, f.Name)
+		vals = append(vals, rv.FieldByIndex(f.Index).Interface())
 	}
 	return cols, vals, nil
 }
@@ -185,7 +192,8 @@ func MutationColumnsAndValues(v any) ([]string, []any, error) {
 // MutationMap extracts a column-name-to-Go-value map from a struct (or
 // non-nil pointer to struct) for the *Map mutation constructors
 // ([spanner.InsertMap], [spanner.UpdateMap], [spanner.ReplaceMap],
-// [spanner.InsertOrUpdateMap]). Masking a column is a map delete away.
+// [spanner.InsertOrUpdateMap]). Read-only fields are excluded like
+// [MutationColumnsAndValues]. Masking a column is a map delete away.
 //
 // Duplicate column names (possible with explicit duplicate `spanner` tags)
 // return an error rather than silently dropping a value.

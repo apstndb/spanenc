@@ -21,7 +21,7 @@ delegating to mise. CI (`.github/workflows/go.yml`) runs the same tasks via
 ## Upstream mirror policy (core invariant)
 
 This package is a **behavioral derivative of `cloud.google.com/go/spanner`**;
-the mirrored behavior currently tracks **v1.84.1**. Sources of truth in the
+the mirrored behavior currently tracks **v1.91.0**. Sources of truth in the
 module cache:
 
 | spanenc | upstream (value.go / mutation.go) |
@@ -29,7 +29,7 @@ module cache:
 | `ValueOf` (encode.go) | `encodeValue` type-switch cases, in the same order |
 | `convertCustomValue` / `customBaseGoType` (typeof.go) | `getDecodableSpannerType` + `convertCustomTypeValue` (encode half) |
 | `encodeStructValue` | `encodeStruct` (declaration order, embedded rejected, tag via `Lookup` so `spanner:""` = unnamed field) |
-| `structFields` / `fieldCache` (struct.go) | `fieldCache` + `spannerTagParser` (tag via `Get`, no comma options) |
+| `structFields` / `fieldCache` (struct.go) | `fieldCache` + `spannerTagParser` (tag via `Get`; `;`-separated options, `->`/`readonly` = read-only since v1.86.0) |
 | `validateNumeric` | `validateNumeric` (same algorithm, independent expression; default NumericError handling) |
 | `github.com/apstndb/structfields` (dependency) | **exported fork of `cloud.google.com/go/internal/fields`** — upstream-derived code lives in that ASL2 module, keeping spanenc MIT |
 
@@ -41,8 +41,11 @@ suite cross-checks `TypeFromGoType` against `ValueOf` results.
 Mirrored quirks are deliberate (do not "fix"): `==` sentinel comparison for
 `spanner.CommitTimestamp`; nil named UUID-array slices converting to an empty
 `[]uuid.UUID`; two different struct field listings (row-shaped = flattened
-embedded; STRUCT values = embedded rejected); dead `Ptr` branch parity in
-`customBaseGoType`.
+embedded; STRUCT values = embedded rejected); encodeStruct reads the raw tag,
+so tag options leak verbatim into STRUCT field names (`"Name;readonly"`);
+read-only fields stay in read-shaped listings (StructColumns / RowTypeFor /
+StructColumnsAndValues) and are excluded only from Mutation* helpers, like
+structToMutationParams; dead `Ptr` branch parity in `customBaseGoType`.
 
 ## Deliberate divergences (documented in doc.go; keep them)
 

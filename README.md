@@ -17,7 +17,7 @@ constructors, so the results compose with the
 
 **Status: experimental.** The API may change while `encodeValue` parity is
 proven against client library releases. The mirrored behavior currently
-tracks `cloud.google.com/go/spanner` **v1.84.1**.
+tracks `cloud.google.com/go/spanner` **v1.91.0**.
 
 ## Motivation
 
@@ -94,7 +94,10 @@ Following the client, there are two different struct field listings:
 - **Row-shaped** (`StructColumns`, `RowTypeFor`, `StructColumnsAndValues`,
   `MutationColumnsAndValues`, `MutationMap`): the mutation/`ToStruct` listing
   — exported fields, embedded struct fields flattened with Go's shadowing
-  rules, `spanner:"-"` skipped, declaration order.
+  rules, `spanner:"-"` skipped, declaration order. Read-only fields
+  (`spanner:"->"` / `spanner:"Name;readonly"`, since spanner v1.86.0) are
+  included in the read-shaped helpers and excluded from `MutationColumnsAndValues`
+  / `MutationMap`, matching the client's mutation constructors.
 - **STRUCT-typed values** (`ValueOf` on a struct, `TypeFor`): the
   `encodeStruct` listing — declaration order, embedded fields rejected,
   `spanner:""` producing an unnamed STRUCT field.

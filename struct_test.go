@@ -41,6 +41,16 @@ type albumOverride struct {
 	CreatedAt string `spanner:"CreatedAt"`
 }
 
+// readOnlyRow exercises every read-only tag spelling the client accepts
+// since spanner v1.86.0.
+type readOnlyRow struct {
+	ID        int64  `spanner:"Id"`
+	Generated string `spanner:"Gen;readonly"`
+	Arrow     string `spanner:"->"`
+	NamedArr  string `spanner:"Named;->"`
+	CaseIns   string `spanner:"Ci;ReadOnly"`
+}
+
 func TestStructColumns(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +63,10 @@ func TestStructColumns(t *testing.T) {
 		{"pointer type", func() ([]string, error) { return spanenc.StructColumns[*singer]() }, []string{"SingerId", "Name", "Tags"}},
 		{"embedded flattened", func() ([]string, error) { return spanenc.StructColumns[album]() }, []string{"AlbumId", "CreatedAt"}},
 		{"embedded shadowed", func() ([]string, error) { return spanenc.StructColumns[albumOverride]() }, []string{"CreatedAt"}},
+		// Read-only fields are readable, so the read-shaped listing keeps
+		// them; the bare "->" tag falls back to the Go field name and
+		// ";"-separated options are stripped from the column name.
+		{"read-only included", func() ([]string, error) { return spanenc.StructColumns[readOnlyRow]() }, []string{"Id", "Gen", "Arrow", "Named", "Ci"}},
 	} {
 		t.Run(tt.desc, func(t *testing.T) {
 			t.Parallel()
@@ -181,6 +195,19 @@ func TestMutationMap(t *testing.T) {
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("MutationMap mismatch (-want +got):\n%s", diff)
 	}
+
+	t.Run("read-only fields excluded", func(t *testing.T) {
+		t.Parallel()
+		// Mirrors structToMutationParams since spanner v1.86.0: read-only
+		// fields never reach mutation columns/values.
+		got, err := spanenc.MutationMap(readOnlyRow{ID: 1, Generated: "g"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(map[string]any{"Id": int64(1)}, got); diff != "" {
+			t.Errorf("MutationMap mismatch (-want +got):\n%s", diff)
+		}
+	})
 
 	t.Run("same-name fields annihilate", func(t *testing.T) {
 		t.Parallel()
