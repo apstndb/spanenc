@@ -76,7 +76,9 @@ cols, vals, _ := spanenc.MutationColumnsAndValues(singer)
 m := spanner.Update("Singers", maskedCols, maskedVals)
 ```
 
-Stream Go structs through spanvalue/writer:
+Stream Go structs through
+[`github.com/apstndb/spanvalue/writer`](https://pkg.go.dev/github.com/apstndb/spanvalue/writer)
+(CSV/TSV/JSONL/SQL INSERT exporters for GCV rows):
 
 ```go
 names, values, _ := spanenc.StructColumnsAndValues(singer)
@@ -124,6 +126,5 @@ documentation.
 
 ## License
 
-MIT (same as [spanvalue](https://github.com/apstndb/spanvalue)). The
-Apache-2.0 fork of upstream code lives separately in
+MIT. The Apache-2.0 fork of upstream code lives separately in
 [structfields](https://github.com/apstndb/structfields).
