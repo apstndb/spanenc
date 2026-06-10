@@ -184,6 +184,55 @@ func TestMutationColumnsAndValues(t *testing.T) {
 	})
 }
 
+func TestParamsMap(t *testing.T) {
+	t.Parallel()
+
+	t.Run("includes read-only fields", func(t *testing.T) {
+		t.Parallel()
+		got, err := spanenc.ParamsMap(readOnlyRow{ID: 1, Generated: "g", Arrow: "a", NamedArr: "n", CaseIns: "c"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[string]any{"Id": int64(1), "Gen": "g", "Arrow": "a", "Named": "n", "Ci": "c"}
+		if diff := cmp.Diff(want, got); diff != "" {
+			t.Errorf("ParamsMap mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("binds as Statement params", func(t *testing.T) {
+		t.Parallel()
+		params, err := spanenc.ParamsMap(singer{SingerID: 1, Name: "n"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		stmt := spanner.Statement{
+			SQL:    `INSERT Singers (SingerId, Name, Tags) VALUES (@SingerId, @Name, @Tags)`,
+			Params: params,
+		}
+		if len(stmt.Params) != 3 {
+			t.Errorf("params = %v, want 3 entries", stmt.Params)
+		}
+	})
+
+	t.Run("include mask may name read-only columns", func(t *testing.T) {
+		t.Parallel()
+		got, err := spanenc.ParamsMap(readOnlyRow{Generated: "g"}, spanenc.WithColumns("Gen"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if diff := cmp.Diff(map[string]any{"Gen": "g"}, got); diff != "" {
+			t.Errorf("ParamsMap mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("unknown column in mask", func(t *testing.T) {
+		t.Parallel()
+		if _, err := spanenc.ParamsMap(singer{}, spanenc.WithoutColumns("Nope")); !errors.Is(err, spanenc.ErrInvalidColumnMask) {
+			t.Errorf("error = %v, want ErrInvalidColumnMask", err)
+		}
+	})
+}
+
 func TestMutationMap(t *testing.T) {
 	t.Parallel()
 

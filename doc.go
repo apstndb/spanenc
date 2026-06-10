@@ -34,6 +34,10 @@
 //     [cloud.google.com/go/spanner.UpdateMap], ...). An update-mask-style
 //     column mask can be written as an include list ([WithColumns]) or an
 //     exclude list ([WithoutColumns]).
+//   - [ParamsMap]: one struct → map with plain Go values for
+//     [cloud.google.com/go/spanner.Statement] Params; read-only fields are
+//     included (they are ordinary bindable values), and the same column
+//     masks apply.
 //   - [ValuesFromSlice] / [ArrayValueFromSlice]: homogeneous slices →
 //     (element type, wire values) or an ARRAY GCV; heterogeneous-capable
 //     (interface) element types are rejected.

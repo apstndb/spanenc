@@ -46,6 +46,7 @@ tracks `cloud.google.com/go/spanner` **v1.91.0**.
 | `StructColumnsAndValues` | struct value | `[]string`, `[]GCV` |
 | `MutationColumnsAndValues` | struct value | `[]string`, `[]any` (for `spanner.Insert`/`Update`/`Replace`...) |
 | `MutationMap` | struct value | `map[string]any` (for `spanner.InsertMap`/`UpdateMap`...) |
+| `ParamsMap` | struct value | `map[string]any` (for `spanner.Statement` Params; read-only fields included) |
 | `ValuesFromSlice[T]` | homogeneous slice | `*sppb.Type` (element), `[]*structpb.Value` |
 | `ArrayValueFromSlice[T]` | homogeneous slice | ARRAY GCV (nil slice → typed NULL ARRAY) |
 
@@ -56,9 +57,10 @@ element is examined.
 Options:
 
 - `WithColumns(...)` / `WithoutColumns(...)` — update-mask-style include /
-  exclude column masks for `MutationColumnsAndValues` / `MutationMap`
-  (struct declaration order preserved; unknown columns, read-only columns in
-  an include list, or combining both kinds return `ErrInvalidColumnMask`).
+  exclude column masks for `MutationColumnsAndValues` / `MutationMap` /
+  `ParamsMap` (struct declaration order preserved; unknown columns,
+  read-only columns in a write-shaped include list, or combining both kinds
+  return `ErrInvalidColumnMask`).
 - `WithLossOfPrecisionHandling(spanner.NumericRound)` — per-call NUMERIC
   loss-of-precision control for the encoding helpers, reusing the client's
   enum; the client's package-global `spanner.LossOfPrecisionHandling` is

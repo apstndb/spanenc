@@ -181,13 +181,13 @@ func StructColumnsAndValues(v any, opts ...EncodeOption) ([]string, []spanner.Ge
 // the struct declaration order, and mask mistakes (unknown columns,
 // read-only columns in an include list, or combining both kinds) return
 // [ErrInvalidColumnMask].
-func MutationColumnsAndValues(v any, opts ...MutationOption) ([]string, []any, error) {
-	cfg := newMutationConfig(opts)
+func MutationColumnsAndValues(v any, opts ...ColumnMaskOption) ([]string, []any, error) {
+	cfg := newColumnMaskConfig(opts)
 	rv, fl, err := structValue(v)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := cfg.validate(fl); err != nil {
+	if err := cfg.validate(fl, true); err != nil {
 		return nil, nil, err
 	}
 	cols := make([]string, 0, len(fl))
@@ -202,6 +202,41 @@ func MutationColumnsAndValues(v any, opts ...MutationOption) ([]string, []any, e
 	return cols, vals, nil
 }
 
+// ParamsMap extracts a column-name-to-Go-value map from a struct (or
+// non-nil pointer to struct) for binding as
+// [cloud.google.com/go/spanner.Statement] Params (parameter names are the
+// `spanner`-tagged column names). Values are returned as-is (no GCV
+// conversion); the client library encodes them when the statement runs.
+//
+// Unlike the write-shaped [MutationMap], read-only fields are included —
+// they are ordinary bindable values in a statement. The [WithColumns] /
+// [WithoutColumns] masks apply, and an include mask may name read-only
+// columns.
+//
+// Duplicate column names (possible with explicit duplicate `spanner` tags)
+// return an error rather than silently dropping a value.
+func ParamsMap(v any, opts ...ColumnMaskOption) (map[string]any, error) {
+	cfg := newColumnMaskConfig(opts)
+	rv, fl, err := structValue(v)
+	if err != nil {
+		return nil, err
+	}
+	if err := cfg.validate(fl, false); err != nil {
+		return nil, err
+	}
+	m := make(map[string]any, len(fl))
+	for _, f := range fl {
+		if !cfg.keep(f.Name) {
+			continue
+		}
+		if _, ok := m[f.Name]; ok {
+			return nil, fmt.Errorf("spanenc: duplicate column name %q", f.Name)
+		}
+		m[f.Name] = rv.FieldByIndex(f.Index).Interface()
+	}
+	return m, nil
+}
+
 // MutationMap extracts a column-name-to-Go-value map from a struct (or
 // non-nil pointer to struct) for the *Map mutation constructors
 // ([spanner.InsertMap], [spanner.UpdateMap], [spanner.ReplaceMap],
@@ -211,7 +246,7 @@ func MutationColumnsAndValues(v any, opts ...MutationOption) ([]string, []any, e
 //
 // Duplicate column names (possible with explicit duplicate `spanner` tags)
 // return an error rather than silently dropping a value.
-func MutationMap(v any, opts ...MutationOption) (map[string]any, error) {
+func MutationMap(v any, opts ...ColumnMaskOption) (map[string]any, error) {
 	cols, vals, err := MutationColumnsAndValues(v, opts...)
 	if err != nil {
 		return nil, err

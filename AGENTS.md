@@ -79,6 +79,9 @@ instead of the client's NumberValue / HTML-escaped JSON.
   masks via `WithColumns` (include) / `WithoutColumns` (exclude), strict
   (`ErrInvalidColumnMask` on unknown/read-only-in-include/combined). Values
   are NOT GCV-encoded (the client encodes them).
+- `ParamsMap` — struct → plain Go map for `spanner.Statement` Params;
+  read-shaped (read-only fields included, include mask may name them); same
+  mask options.
 - `ValuesFromSlice[T]` / `ArrayValueFromSlice[T]` — homogeneous slices;
   interface element types rejected via static inference; nil slice = typed
   NULL ARRAY at the GCV level.

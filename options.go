@@ -53,44 +53,45 @@ func WithLossOfPrecisionHandling(handling spanner.LossOfPrecisionHandlingOption)
 	return func(cfg *encodeConfig) { cfg.lossOfPrecisionHandling = handling }
 }
 
-// MutationOption configures the column mask of [MutationColumnsAndValues]
-// and [MutationMap].
-type MutationOption func(*mutationConfig)
+// ColumnMaskOption configures the column mask of [MutationColumnsAndValues],
+// [MutationMap], and [ParamsMap].
+type ColumnMaskOption func(*columnMaskConfig)
 
-type mutationConfig struct {
+type columnMaskConfig struct {
 	include []string
 	exclude []string
 }
 
-func newMutationConfig(opts []MutationOption) mutationConfig {
-	var cfg mutationConfig
+func newColumnMaskConfig(opts []ColumnMaskOption) columnMaskConfig {
+	var cfg columnMaskConfig
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 	return cfg
 }
 
-// WithColumns restricts the mutation columns to the listed ones (an include
+// WithColumns restricts the output columns to the listed ones (an include
 // mask). Output keeps the struct declaration order regardless of the
-// argument order. Naming a column that is unknown or read-only returns
-// [ErrInvalidColumnMask]; combining with [WithoutColumns] does too. Multiple
-// WithColumns options accumulate.
-func WithColumns(columns ...string) MutationOption {
-	return func(cfg *mutationConfig) { cfg.include = append(cfg.include, columns...) }
+// argument order. Naming an unknown column returns [ErrInvalidColumnMask] —
+// as does naming a read-only column in the write-shaped helpers
+// ([MutationColumnsAndValues], [MutationMap]) or combining with
+// [WithoutColumns]. Multiple WithColumns options accumulate.
+func WithColumns(columns ...string) ColumnMaskOption {
+	return func(cfg *columnMaskConfig) { cfg.include = append(cfg.include, columns...) }
 }
 
-// WithoutColumns drops the listed columns from the mutation columns (an
-// exclude mask). Naming an unknown column returns [ErrInvalidColumnMask]
-// (naming a read-only column is a no-op: it is already excluded from
-// writes); combining with [WithColumns] does too. Multiple WithoutColumns
-// options accumulate.
-func WithoutColumns(columns ...string) MutationOption {
-	return func(cfg *mutationConfig) { cfg.exclude = append(cfg.exclude, columns...) }
+// WithoutColumns drops the listed columns from the output (an exclude mask).
+// Naming an unknown column returns [ErrInvalidColumnMask] (naming a
+// read-only column is allowed: in the write-shaped helpers it is already
+// excluded from writes); combining with [WithColumns] does too. Multiple
+// WithoutColumns options accumulate.
+func WithoutColumns(columns ...string) ColumnMaskOption {
+	return func(cfg *columnMaskConfig) { cfg.exclude = append(cfg.exclude, columns...) }
 }
 
-// keep reports whether the writable field name passes the configured mask.
+// keep reports whether the field name passes the configured mask.
 // validate must have been called first.
-func (cfg *mutationConfig) keep(name string) bool {
+func (cfg *columnMaskConfig) keep(name string) bool {
 	if cfg.include != nil {
 		return slices.Contains(cfg.include, name)
 	}
@@ -98,9 +99,10 @@ func (cfg *mutationConfig) keep(name string) bool {
 }
 
 // validate checks the mask against the listed fields: include and exclude
-// are mutually exclusive, every masked name must exist, and include may not
-// name read-only fields.
-func (cfg *mutationConfig) validate(fl fields.List) error {
+// are mutually exclusive and every masked name must exist. With
+// requireWritable (the write-shaped helpers), include may not name
+// read-only fields.
+func (cfg *columnMaskConfig) validate(fl fields.List, requireWritable bool) error {
 	if cfg.include != nil && cfg.exclude != nil {
 		return fmt.Errorf("%w: WithColumns and WithoutColumns are mutually exclusive", ErrInvalidColumnMask)
 	}
@@ -113,7 +115,7 @@ func (cfg *mutationConfig) validate(fl fields.List) error {
 		if !ok {
 			return fmt.Errorf("%w: unknown column %q", ErrInvalidColumnMask, name)
 		}
-		if isReadOnlyField(f) {
+		if requireWritable && isReadOnlyField(f) {
 			return fmt.Errorf("%w: column %q is read-only", ErrInvalidColumnMask, name)
 		}
 	}
