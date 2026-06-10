@@ -14,10 +14,6 @@ linters:
       - path: _test\.go$
         linters:
           - godoclint
-    paths:
-      # Port of cloud.google.com/go/internal/fields; keep diffs against
-      # upstream minimal instead of satisfying local linters.
-      - internal/fields
   settings:
     godoclint:
       default: basic

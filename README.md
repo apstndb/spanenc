@@ -105,23 +105,25 @@ validated, and non-finite floats / JSON use gcvctor's canonical wire forms.
 
 ## Tracking upstream
 
-This package is, by design, a behavioral derivative of
+This package is, by design, a behavioral mirror of
 [googleapis/google-cloud-go](https://github.com/googleapis/google-cloud-go)'s
 `spanner` package:
 
-- `internal/fields` is a port of `cloud.google.com/go/internal/fields`
-  (Apache License 2.0, Copyright Google LLC), with provenance noted in file
-  headers.
-- `ValueOf` / `TypeFromGoType` mirror `encodeValue` and
-  `getDecodableSpannerType`; new client-supported Go types and Spanner types
-  must be added here when upstream adds them.
+- Struct-field listing reuses
+  [`github.com/apstndb/structfields`](https://github.com/apstndb/structfields),
+  an exported fork of `cloud.google.com/go/internal/fields` (Apache License
+  2.0) maintained as a separate module so that this module contains no
+  upstream-derived code.
+- `ValueOf` / `TypeFromGoType` mirror the *behavior* of `encodeValue` and
+  `getDecodableSpannerType` with independent code; new client-supported Go
+  types and Spanner types must be added here when upstream adds them.
 
-That is why this module lives in its own Apache-2.0 repository rather than in
-the MIT-licensed spanvalue module. When bumping the
-`cloud.google.com/go/spanner` dependency, re-audit the mirrored functions and
-update the tracked version in the package documentation.
+When bumping the `cloud.google.com/go/spanner` dependency, re-audit the
+mirrored functions and update the tracked version in the package
+documentation.
 
 ## License
 
-Apache License 2.0. Portions Copyright Google LLC (see file headers in
-`internal/fields`).
+MIT (same as [spanvalue](https://github.com/apstndb/spanvalue)). The
+Apache-2.0 fork of upstream code lives separately in
+[structfields](https://github.com/apstndb/structfields).

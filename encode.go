@@ -1,17 +1,3 @@
-// Copyright 2026 apstndb
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//      http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 package spanenc
 
 import (
@@ -552,25 +538,24 @@ func encodeProtoArrayValue(v any) (spanner.GenericColumnValue, error) {
 	return gcvctor.ArrayValueOf(elemType, elems...)
 }
 
-// validateNumeric is a port of the client's validateNumeric, applied
-// unconditionally like the client's default NumericError handling.
+// validateNumeric checks GoogleSQL NUMERIC bounds (precision 38, scale 9)
+// with the same algorithm as the client's validateNumeric, applied
+// unconditionally like the client's default NumericError handling: render
+// with one extra fractional digit so an over-scale value survives rounding,
+// then count the digits of each component.
 func validateNumeric(r *big.Rat) error {
 	if r == nil {
 		return nil
 	}
-	// Add one more digit to the scale component to find out if there are more
-	// digits than required.
-	strRep := r.FloatString(spanner.NumericScaleDigits + 1)
-	strRep = strings.TrimRight(strRep, "0")
-	strRep = strings.TrimLeft(strRep, "-")
-	s := strings.Split(strRep, ".")
-	whole := s[0]
-	scale := s[1]
-	if len(scale) > spanner.NumericScaleDigits {
-		return fmt.Errorf("%w: max scale for a numeric is %d. The requested numeric has more", ErrNumericOutOfRange, spanner.NumericScaleDigits)
+	rendered := strings.TrimPrefix(r.FloatString(spanner.NumericScaleDigits+1), "-")
+	dot := strings.IndexByte(rendered, '.')
+	whole := rendered[:dot]
+	frac := strings.TrimRight(rendered[dot+1:], "0")
+	if len(frac) > spanner.NumericScaleDigits {
+		return fmt.Errorf("%w: NUMERIC scale exceeds %d digits", ErrNumericOutOfRange, spanner.NumericScaleDigits)
 	}
-	if len(whole) > spanner.NumericPrecisionDigits-spanner.NumericScaleDigits {
-		return fmt.Errorf("%w: max precision for the whole component of a numeric is %d. The requested numeric has a whole component with precision %d", ErrNumericOutOfRange, spanner.NumericPrecisionDigits-spanner.NumericScaleDigits, len(whole))
+	if maxWhole := spanner.NumericPrecisionDigits - spanner.NumericScaleDigits; len(whole) > maxWhole {
+		return fmt.Errorf("%w: NUMERIC whole component has %d digits, exceeding %d", ErrNumericOutOfRange, len(whole), maxWhole)
 	}
 	return nil
 }

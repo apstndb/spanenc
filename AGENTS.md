@@ -1,11 +1,14 @@
 # Agent instructions for `spanenc`
 
-Go library (**Apache-2.0**): convert plain Go values to
+Go library (**MIT**): convert plain Go values to
 `spanner.GenericColumnValue` (GCV) and derive column names / Spanner types
 from Go structs, **mirroring the Cloud Spanner Go client library's internal
-encoding semantics**. Built on [`spanvalue/gcvctor`](https://github.com/apstndb/spanvalue)
-and [`spantype/typector`](https://github.com/apstndb/spantype). Alias **`sppb`** =
-`cloud.google.com/go/spanner/apiv1/spannerpb`.
+encoding semantics**. Built on [`spanvalue/gcvctor`](https://github.com/apstndb/spanvalue),
+[`spantype/typector`](https://github.com/apstndb/spantype), and
+[`structfields`](https://github.com/apstndb/structfields) (the Apache-2.0
+exported fork of `cloud.google.com/go/internal/fields`; all upstream-derived
+code lives THERE, never here — spanenc mirrors behavior with independent
+code only). Alias **`sppb`** = `cloud.google.com/go/spanner/apiv1/spannerpb`.
 
 ## Commands
 
@@ -27,8 +30,8 @@ module cache:
 | `convertCustomValue` / `customBaseGoType` (typeof.go) | `getDecodableSpannerType` + `convertCustomTypeValue` (encode half) |
 | `encodeStructValue` | `encodeStruct` (declaration order, embedded rejected, tag via `Lookup` so `spanner:""` = unnamed field) |
 | `structFields` / `fieldCache` (struct.go) | `fieldCache` + `spannerTagParser` (tag via `Get`, no comma options) |
-| `validateNumeric` | `validateNumeric` (default NumericError handling) |
-| `internal/fields` | **port of `cloud.google.com/go/internal/fields`** — keep diffs minimal, keep provenance headers, excluded from lint via `.golangci.yml` `paths` |
+| `validateNumeric` | `validateNumeric` (same algorithm, independent expression; default NumericError handling) |
+| `github.com/apstndb/structfields` (dependency) | **exported fork of `cloud.google.com/go/internal/fields`** — upstream-derived code lives in that ASL2 module, keeping spanenc MIT |
 
 When bumping the spanner dependency: re-audit these functions against
 upstream, update the tracked version in `doc.go` and `README.md`, and extend
