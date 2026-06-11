@@ -49,6 +49,8 @@
 //   - [ValuesFromSlice] / [ArrayValueFromSlice]: homogeneous slices →
 //     (element type, wire values) or an ARRAY GCV; heterogeneous-capable
 //     (interface) element types are rejected.
+//   - [WithValueEncoder] / [WithGoType]: per-call injection of encoders for
+//     Go types outside the client's coverage; see "Custom value encoders".
 //
 // # Struct field listings
 //
@@ -95,6 +97,34 @@
 //     ("NaN"/"Infinity" strings; compact JSON without HTML escaping); the
 //     client sends a raw protobuf NumberValue and HTML-escaped JSON. Both
 //     forms are semantically equivalent and accepted by Spanner.
+//
+// # Custom value encoders
+//
+// The client's Go type coverage can be extended per call with
+// [WithValueEncoder], for built-in types the client does not encode (uint32
+// and the other integer width variants, [time.Duration], ...) and for
+// external types that cannot implement [cloud.google.com/go/spanner.Encoder]:
+//
+//	gcv, err := spanenc.ValueOf(myUint32,
+//	    spanenc.WithValueEncoder(func(v uint32) (spanner.GenericColumnValue, error) {
+//	        return gcvctor.Int64Value(int64(v)), nil
+//	    }))
+//
+// Registered encoders run before the client mirror and match the exact
+// dynamic type; returning [ErrFallthrough] defers to the built-in encoding,
+// the same contract as [github.com/apstndb/spanvalue.FormatConfig] complex
+// plugins. With no registrations the behavior is exactly the client mirror.
+// A registration for T also applies per element of []T; pair it with
+// [WithGoType] so nil and empty slices have an ARRAY element type. Because
+// registered encoders override ALL built-in handling for their type,
+// registering [time.Time] bypasses the
+// [cloud.google.com/go/spanner.CommitTimestamp] sentinel detection — prefer
+// extending unsupported types over overriding supported ones.
+//
+// There is deliberately no package-global registry (unlike goccy/go-yaml's
+// RegisterCustomMarshaler): like the ignored package-global
+// [cloud.google.com/go/spanner.LossOfPrecisionHandling], mutable global
+// state is avoided in favor of per-call explicitness.
 //
 // # Adoption guide
 //

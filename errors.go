@@ -63,4 +63,11 @@ var (
 	// unknown column, includes a read-only column, or combines include and
 	// exclude masks.
 	ErrInvalidColumnMask = errors.New("spanenc: invalid column mask")
+
+	// ErrFallthrough is returned by an encoder registered with
+	// [WithValueEncoder] to defer the value to the built-in client-mirror
+	// encoding — the same contract as
+	// [github.com/apstndb/spanvalue.FormatConfig] complex plugins. It is
+	// never returned by this package's own functions.
+	ErrFallthrough = errors.New("spanenc: fallthrough to built-in encoding")
 )

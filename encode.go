@@ -2,6 +2,7 @@ package spanenc
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/big"
 	"reflect"
@@ -49,8 +50,26 @@ func ValueOf(v any, opts ...EncodeOption) (spanner.GenericColumnValue, error) {
 }
 
 // encodeValue is the option-threaded core of [ValueOf], mirroring the
-// client's encodeValue type switch in the same case order.
+// client's encodeValue type switch in the same case order. Encoders
+// registered via [WithValueEncoder] are consulted first (including per
+// element of a slice of a registered type); [ErrFallthrough] defers to the
+// mirror, so without options the behavior is exactly the client's.
 func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
+	if t := reflect.TypeOf(v); t != nil && cfg.valueEncoders != nil {
+		if enc, ok := cfg.valueEncoders[t]; ok {
+			out, err := enc(v)
+			if err == nil || !errors.Is(err, ErrFallthrough) {
+				return out, err
+			}
+			// ErrFallthrough: defer to the client mirror below.
+		} else if t.Kind() == reflect.Slice {
+			if _, ok := cfg.valueEncoders[t.Elem()]; ok {
+				if out, handled, err := encodeCustomSlice(cfg, v, t); handled {
+					return out, err
+				}
+			}
+		}
+	}
 	switch x := v.(type) {
 	case nil:
 		return gcv{}, ErrUntypedNil
@@ -269,6 +288,41 @@ func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 		}
 		return gcv{}, fmt.Errorf("%w: %T", ErrUnsupportedType, v)
 	}
+}
+
+// encodeCustomSlice applies a [WithValueEncoder] registration for the
+// element type across a slice, mirroring the per-case slice handling of
+// encodeValue (nil = typed NULL ARRAY, per-element encode otherwise). The
+// ARRAY element type comes from [WithGoType] when registered, otherwise
+// from the first encoded element. It reports handled == false when the
+// slice is nil or empty and no element type was registered — the client
+// mirror then keeps its behavior for built-in element types (and rejects
+// unsupported ones with [ErrUnsupportedType]).
+func encodeCustomSlice(cfg encodeConfig, v any, t reflect.Type) (spanner.GenericColumnValue, bool, error) {
+	elemType := cfg.goTypes[t.Elem()]
+	rv := reflect.ValueOf(v)
+	if rv.IsNil() {
+		if elemType == nil {
+			return gcv{}, false, nil
+		}
+		return gcvctor.NullArrayOf(elemType), true, nil
+	}
+	if rv.Len() == 0 && elemType == nil {
+		return gcv{}, false, nil
+	}
+	elems := make([]gcv, rv.Len())
+	for i := range rv.Len() {
+		e, err := encodeValue(cfg, rv.Index(i).Interface())
+		if err != nil {
+			return gcv{}, true, &gcvctor.ArrayElementError{Index: i, Err: err}
+		}
+		elems[i] = e
+	}
+	if elemType == nil {
+		elemType = elems[0].Type
+	}
+	out, err := gcvctor.ArrayValueOf(elemType, elems...)
+	return out, true, err
 }
 
 // encodeFunc converts one element of a homogeneous family.

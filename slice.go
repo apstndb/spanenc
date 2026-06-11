@@ -1,6 +1,8 @@
 package spanenc
 
 import (
+	"reflect"
+
 	"github.com/apstndb/spanvalue/gcvctor"
 
 	"cloud.google.com/go/spanner"
@@ -52,11 +54,17 @@ func ArrayValueFromSlice[T any](vs []T, opts ...EncodeOption) (spanner.GenericCo
 }
 
 // sliceElements infers the element type from T and encodes each element,
-// verifying every element's encoded type against the inferred one.
+// verifying every element's encoded type against the inferred one. A
+// [WithGoType] registration for T takes precedence over static inference,
+// enabling slices of types only encodable via [WithValueEncoder].
 func sliceElements[T any](vs []T, cfg encodeConfig) (*sppb.Type, []spanner.GenericColumnValue, error) {
-	elemType, err := TypeFor[T]()
-	if err != nil {
-		return nil, nil, err
+	elemType := cfg.goTypes[reflect.TypeFor[T]()]
+	if elemType == nil {
+		var err error
+		elemType, err = TypeFor[T]()
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	gcvs := make([]spanner.GenericColumnValue, len(vs))
 	for i, v := range vs {

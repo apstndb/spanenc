@@ -6,6 +6,7 @@ import (
 
 	"cloud.google.com/go/spanner"
 	"github.com/apstndb/spanvalue"
+	"github.com/apstndb/spanvalue/gcvctor"
 	"github.com/apstndb/spanvalue/writer"
 
 	"github.com/apstndb/spanenc"
@@ -175,4 +176,22 @@ func ExampleRowEncoder_Rows() {
 	// Output:
 	// [AUTOCOMMIT TRUE]
 	// [READONLY FALSE]
+}
+
+// ExampleWithValueEncoder extends the client's Go type coverage per call:
+// uint32 has no client-library encoding, so it is mapped to INT64 with an
+// injected encoder. Returning spanenc.ErrFallthrough would defer a value to
+// the built-in encoding instead.
+func ExampleWithValueEncoder() {
+	gcv, err := spanenc.ValueOf(uint32(42),
+		spanenc.WithValueEncoder(func(v uint32) (spanner.GenericColumnValue, error) {
+			return gcvctor.Int64Value(int64(v)), nil
+		}))
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(gcv.Type.GetCode(), gcv.Value.GetStringValue())
+	// Output:
+	// INT64 42
 }

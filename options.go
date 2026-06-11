@@ -2,9 +2,11 @@ package spanenc
 
 import (
 	"fmt"
+	"reflect"
 	"slices"
 
 	"cloud.google.com/go/spanner"
+	sppb "cloud.google.com/go/spanner/apiv1/spannerpb"
 	fields "github.com/apstndb/structfields"
 )
 
@@ -14,6 +16,8 @@ type EncodeOption func(*encodeConfig)
 
 type encodeConfig struct {
 	lossOfPrecisionHandling spanner.LossOfPrecisionHandlingOption
+	valueEncoders           map[reflect.Type]func(any) (spanner.GenericColumnValue, error)
+	goTypes                 map[reflect.Type]*sppb.Type
 }
 
 // numericRounding reports whether NUMERIC validation is skipped. Like the
@@ -51,6 +55,56 @@ func newEncodeConfig(opts []EncodeOption) encodeConfig {
 // that behavior).
 func WithLossOfPrecisionHandling(handling spanner.LossOfPrecisionHandlingOption) EncodeOption {
 	return func(cfg *encodeConfig) { cfg.lossOfPrecisionHandling = handling }
+}
+
+// WithValueEncoder registers f as the encoder for values whose dynamic type
+// is exactly T, consulted BEFORE the client-mirror encoding: with it a call
+// can support Go types the client does not (uint32, [time.Duration],
+// external types that cannot implement [spanner.Encoder]) or override
+// built-in handling. Returning [ErrFallthrough] from f defers the value to
+// the built-in encoding. The last registration for a given T wins, following
+// the usual functional-options convention.
+//
+// A registered encoder for T also applies per element of []T: the ARRAY
+// element type is taken from [WithGoType] when registered, otherwise from
+// the first encoded element — so nil and empty []T defer to the built-in
+// encoding (typically [ErrUnsupportedType] for client-unsupported element
+// types) unless [WithGoType] supplies the element type.
+//
+// Matching is by exact dynamic type only; T must not be an interface type
+// (the returned option panics when applied — values never carry an interface
+// dynamic type, so the registration could never fire). Overriding a built-in
+// type bypasses ALL mirror handling for it; in particular, registering
+// [time.Time] bypasses the [spanner.CommitTimestamp] sentinel detection.
+func WithValueEncoder[T any](f func(T) (spanner.GenericColumnValue, error)) EncodeOption {
+	t := reflect.TypeFor[T]()
+	return func(cfg *encodeConfig) {
+		if t.Kind() == reflect.Interface {
+			panic(fmt.Sprintf("spanenc.WithValueEncoder: interface type %v cannot match a dynamic type; register concrete types instead", t))
+		}
+		if cfg.valueEncoders == nil {
+			cfg.valueEncoders = make(map[reflect.Type]func(any) (spanner.GenericColumnValue, error))
+		}
+		cfg.valueEncoders[t] = func(v any) (spanner.GenericColumnValue, error) {
+			return f(v.(T))
+		}
+	}
+}
+
+// WithGoType registers typ as the Spanner type of Go type T for encoding
+// paths that need a type without a value: the element type of a nil or
+// empty []T under a [WithValueEncoder] registration, and the static element
+// type of [ValuesFromSlice] / [ArrayValueFromSlice] when [TypeFromGoType]
+// alone cannot infer it. It does not register an encoder; pair it with
+// [WithValueEncoder] for types the client does not encode.
+func WithGoType[T any](typ *sppb.Type) EncodeOption {
+	t := reflect.TypeFor[T]()
+	return func(cfg *encodeConfig) {
+		if cfg.goTypes == nil {
+			cfg.goTypes = make(map[reflect.Type]*sppb.Type)
+		}
+		cfg.goTypes[t] = typ
+	}
 }
 
 // ColumnMaskOption configures the column mask of [MutationColumnsAndValues],
