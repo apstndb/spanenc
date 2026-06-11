@@ -145,3 +145,34 @@ func ExampleMutationColumnsAndValues() {
 	// [SingerId LastName]
 	// [1 Richards]
 }
+
+// ExampleRowEncoder_Rows renders a client-side (virtual) result set through
+// the same *spanner.Row pipeline used for server query results: structs are
+// encoded into real rows, then formatted with spanvalue row formatters.
+func ExampleRowEncoder_Rows() {
+	type variable struct {
+		Name  string `spanner:"name"`
+		Value string `spanner:"value"`
+	}
+	enc := spanenc.MustNewRowEncoder[variable]()
+
+	items := []variable{
+		{Name: "AUTOCOMMIT", Value: "TRUE"},
+		{Name: "READONLY", Value: "FALSE"},
+	}
+	for row, err := range enc.Rows(items) {
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		columns, err := spanvalue.FormatRowSpannerCLICompatible(row)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println(columns)
+	}
+	// Output:
+	// [AUTOCOMMIT TRUE]
+	// [READONLY FALSE]
+}

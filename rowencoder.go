@@ -1,6 +1,7 @@
 package spanenc
 
 import (
+	"iter"
 	"reflect"
 
 	"cloud.google.com/go/spanner"
@@ -141,4 +142,46 @@ func (e *RowEncoder[T]) Values(v T, opts ...EncodeOption) ([]spanner.GenericColu
 		values[i] = fgcv
 	}
 	return values, nil
+}
+
+// Row encodes one row as a [cloud.google.com/go/spanner.Row] whose columns
+// align with [RowEncoder.Columns]. It is [RowEncoder.Values] followed by
+// [cloud.google.com/go/spanner.NewRow]; NewRow passes
+// [spanner.GenericColumnValue] inputs through the client's encodeValue
+// unchanged (Type and Value are used as-is), so the row carries exactly the
+// values this encoder produced, including typed NULLs.
+//
+// Use Row when a consumer takes *spanner.Row — for example
+// [github.com/apstndb/spanvalue.FormatConfig.FormatRow] display pipelines or
+// [github.com/apstndb/spanvalue/writer] RowIteratorWriter sinks — so
+// client-side (virtual) result sets flow through the same code paths as
+// server query results.
+func (e *RowEncoder[T]) Row(v T, opts ...EncodeOption) (*spanner.Row, error) {
+	gcvs, err := e.Values(v, opts...)
+	if err != nil {
+		return nil, err
+	}
+	vals := make([]any, len(gcvs))
+	for i := range gcvs {
+		vals[i] = gcvs[i]
+	}
+	return spanner.NewRow(e.columns, vals)
+}
+
+// Rows returns an iterator over items encoded with [RowEncoder.Row].
+// Encoding is lazy: each row is encoded only when yielded, so callers can
+// stop early without paying for the remaining items. When an item fails to
+// encode, the iterator yields (nil, err) once and stops.
+//
+// The (row, error) pairing matches fallible row sources, so a row-based
+// sink can range over it and abort on the first error.
+func (e *RowEncoder[T]) Rows(items []T, opts ...EncodeOption) iter.Seq2[*spanner.Row, error] {
+	return func(yield func(*spanner.Row, error) bool) {
+		for _, item := range items {
+			row, err := e.Row(item, opts...)
+			if !yield(row, err) || err != nil {
+				return
+			}
+		}
+	}
 }
