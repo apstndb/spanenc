@@ -116,6 +116,22 @@ func (e *RowEncoder[T]) ResultSetMetadata() (*sppb.ResultSetMetadata, error) {
 	return &sppb.ResultSetMetadata{RowType: rowType}, nil
 }
 
+// MustResultSetMetadata is [RowEncoder.ResultSetMetadata] panicking on error.
+// Whether the row type resolves is deterministic for a given T and column
+// mask (it is computed once at construction; see [RowEncoder.RowType]), so
+// for package-level encoders of compile-time-known struct types — the
+// [MustNewRowEncoder] pattern — a failure is a programming error. Note that
+// [MustNewRowEncoder] alone does not guarantee an inferable row type;
+// hoisting MustResultSetMetadata next to it surfaces that failure at
+// initialization instead of per call. Each call returns a fresh clone.
+func (e *RowEncoder[T]) MustResultSetMetadata() *sppb.ResultSetMetadata {
+	md, err := e.ResultSetMetadata()
+	if err != nil {
+		panic(err)
+	}
+	return md
+}
+
 // Values encodes one row: the masked fields of v as
 // [spanner.GenericColumnValue] slices aligned with [RowEncoder.Columns].
 // A nil pointer v returns [ErrNilStructPointer]. Options configure the

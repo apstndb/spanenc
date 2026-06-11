@@ -87,7 +87,9 @@ instead of the client's NumberValue / HTML-escaped JSON.
   result sets).
 - `RowEncoder[T]` (`NewRowEncoder`) — compiled read-shaped row codec:
   listing/mask/row type resolved once; `Columns` / `RowType` /
-  `ResultSetMetadata` / `Values(v, encodeOpts...)` / `Row(v, encodeOpts...)`
+  `ResultSetMetadata` (+`MustResultSetMetadata` for package-level wiring;
+  Must construction does not guarantee an inferable row type) /
+  `Values(v, encodeOpts...)` / `Row(v, encodeOpts...)`
   (→ `*spanner.Row` via `spanner.NewRow` GCV passthrough) /
   `Rows(items, encodeOpts...)` (lazy `iter.Seq2[*spanner.Row, error]`).
   Mask validated like ParamsMap (read-shaped); must stay consistent with
