@@ -146,10 +146,11 @@ func (e *RowEncoder[T]) Values(v T, opts ...EncodeOption) ([]spanner.GenericColu
 
 // Row encodes one row as a [cloud.google.com/go/spanner.Row] whose columns
 // align with [RowEncoder.Columns]. It is [RowEncoder.Values] followed by
-// [cloud.google.com/go/spanner.NewRow]; NewRow passes
-// [spanner.GenericColumnValue] inputs through the client's encodeValue
-// unchanged (Type and Value are used as-is), so the row carries exactly the
-// values this encoder produced, including typed NULLs.
+// [cloud.google.com/go/spanner.NewRow]; NewRow routes
+// [spanner.GenericColumnValue] inputs through the client's encodeValue,
+// which deep-clones Type and Value without re-encoding, so the row carries
+// exactly the values this encoder produced (including typed NULLs) and does
+// not alias encoder output.
 //
 // Use Row when a consumer takes *spanner.Row — for example
 // [github.com/apstndb/spanvalue.FormatConfig.FormatRow] display pipelines or

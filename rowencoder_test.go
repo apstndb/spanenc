@@ -225,7 +225,8 @@ func TestRowEncoderRow(t *testing.T) {
 	}
 
 	// The row must carry exactly the GCVs Values produced, including the
-	// typed NULL: spanner.NewRow passes GenericColumnValue through unchanged.
+	// typed NULL: spanner.NewRow deep-clones GenericColumnValue inputs
+	// without re-encoding.
 	want, err := enc.Values(in)
 	if err != nil {
 		t.Fatal(err)
@@ -291,16 +292,20 @@ func TestRowEncoderRows(t *testing.T) {
 		}
 	})
 
-	t.Run("lazy encoding allows early stop before a failing item", func(t *testing.T) {
+	t.Run("encodes lazily, only yielded items", func(t *testing.T) {
 		t.Parallel()
-		type anyField struct {
-			V any
+		type encoderField struct {
+			V countingEncoder
 		}
-		enc, err := spanenc.NewRowEncoder[anyField]()
+		enc, err := spanenc.NewRowEncoder[encoderField]()
 		if err != nil {
 			t.Fatal(err)
 		}
-		items := []anyField{{V: int64(1)}, {V: nil}} // second item fails with ErrUntypedNil
+		var encodeCalls int
+		items := []encoderField{
+			{V: countingEncoder{calls: &encodeCalls}},
+			{V: countingEncoder{calls: &encodeCalls}},
+		}
 		var seen int
 		for _, err := range enc.Rows(items) {
 			if err != nil {
@@ -311,6 +316,11 @@ func TestRowEncoderRows(t *testing.T) {
 		}
 		if seen != 1 {
 			t.Errorf("seen = %d, want 1", seen)
+		}
+		// Pin the documented laziness: breaking after the first row must
+		// leave the second item unencoded.
+		if encodeCalls != 1 {
+			t.Errorf("EncodeSpanner calls = %d, want 1", encodeCalls)
 		}
 	})
 
@@ -345,3 +355,16 @@ func TestRowEncoderRows(t *testing.T) {
 		}
 	})
 }
+
+// countingEncoder counts EncodeSpanner calls so tests can observe whether
+// RowEncoder.Rows encodes items lazily.
+type countingEncoder struct {
+	calls *int
+}
+
+func (c countingEncoder) EncodeSpanner() (any, error) {
+	*c.calls++
+	return "encoded", nil
+}
+
+var _ spanner.Encoder = countingEncoder{}
