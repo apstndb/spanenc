@@ -1,5 +1,13 @@
 # spanenc
 
+> [!WARNING]
+> **Deprecated.** Development moved to
+> [spancodec](https://github.com/apstndb/spancodec), which merges spanenc
+> and spandec into a single codec module. spanenc v0.3.x remains usable but
+> frozen; see the
+> [migration table](https://github.com/apstndb/spancodec#migrating-from-spanenc--spandec).
+
+
 [![Go Reference](https://pkg.go.dev/badge/github.com/apstndb/spanenc.svg)](https://pkg.go.dev/github.com/apstndb/spanenc)
 
 Convert plain Go values into Cloud Spanner `GenericColumnValue` (GCV) values

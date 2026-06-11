@@ -1,3 +1,7 @@
+// Deprecated: development moved to github.com/apstndb/spancodec, which
+// merges spanenc and spandec into a single codec module. spanenc v0.3.x
+// remains usable but frozen; see the spancodec README for the migration
+// table.
 module github.com/apstndb/spanenc
 
 go 1.25.0
