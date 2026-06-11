@@ -205,3 +205,166 @@ func TestRowEncoderWriterIntegration(t *testing.T) {
 		t.Errorf("CSV mismatch (-want +got):\n%s", diff)
 	}
 }
+
+func TestRowEncoderRow(t *testing.T) {
+	t.Parallel()
+
+	enc, err := spanenc.NewRowEncoder[singer]()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	in := singer{SingerID: 1, Name: "n"} // Tags nil = typed NULL ARRAY<STRING>
+	row, err := enc.Row(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if diff := cmp.Diff(enc.Columns(), row.ColumnNames()); diff != "" {
+		t.Errorf("ColumnNames mismatch (-Columns +Row):\n%s", diff)
+	}
+
+	// The row must carry exactly the GCVs Values produced, including the
+	// typed NULL: spanner.NewRow deep-clones GenericColumnValue inputs
+	// without re-encoding.
+	want, err := enc.Values(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]spanner.GenericColumnValue, row.Size())
+	for i := range row.Size() {
+		if err := row.Column(i, &got[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if diff := cmp.Diff(want, got, protocmp.Transform()); diff != "" {
+		t.Errorf("row GCVs mismatch (-Values +Row):\n%s", diff)
+	}
+
+	// Decode round-trip through the real client's typed decoding.
+	var (
+		id   int64
+		name string
+		tags []string
+	)
+	if err := row.Columns(&id, &name, &tags); err != nil {
+		t.Fatal(err)
+	}
+	if id != 1 || name != "n" || tags != nil {
+		t.Errorf("decoded = (%d, %q, %v), want (1, \"n\", nil)", id, name, tags)
+	}
+
+	t.Run("nil pointer row", func(t *testing.T) {
+		t.Parallel()
+		enc, err := spanenc.NewRowEncoder[*singer]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := enc.Row(nil); !errors.Is(err, spanenc.ErrNilStructPointer) {
+			t.Errorf("error = %v, want ErrNilStructPointer", err)
+		}
+	})
+}
+
+func TestRowEncoderRows(t *testing.T) {
+	t.Parallel()
+
+	t.Run("yields all rows", func(t *testing.T) {
+		t.Parallel()
+		enc, err := spanenc.NewRowEncoder[singer]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var formatted [][]string
+		for row, err := range enc.Rows([]singer{{SingerID: 1, Name: "a"}, {SingerID: 2, Name: "b"}}) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			cols, err := spanvalue.FormatRowSpannerCLICompatible(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			formatted = append(formatted, cols)
+		}
+		want := [][]string{{"1", "a", "NULL"}, {"2", "b", "NULL"}}
+		if diff := cmp.Diff(want, formatted); diff != "" {
+			t.Errorf("rows mismatch (-want +got):\n%s", diff)
+		}
+	})
+
+	t.Run("encodes lazily, only yielded items", func(t *testing.T) {
+		t.Parallel()
+		type encoderField struct {
+			V countingEncoder
+		}
+		enc, err := spanenc.NewRowEncoder[encoderField]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var encodeCalls int
+		items := []encoderField{
+			{V: countingEncoder{calls: &encodeCalls}},
+			{V: countingEncoder{calls: &encodeCalls}},
+		}
+		var seen int
+		for _, err := range enc.Rows(items) {
+			if err != nil {
+				t.Fatalf("unexpected error before stop: %v", err)
+			}
+			seen++
+			break
+		}
+		if seen != 1 {
+			t.Errorf("seen = %d, want 1", seen)
+		}
+		// Pin the documented laziness: breaking after the first row must
+		// leave the second item unencoded.
+		if encodeCalls != 1 {
+			t.Errorf("EncodeSpanner calls = %d, want 1", encodeCalls)
+		}
+	})
+
+	t.Run("stops after yielding the first encode error", func(t *testing.T) {
+		t.Parallel()
+		type anyField struct {
+			V any
+		}
+		enc, err := spanenc.NewRowEncoder[anyField]()
+		if err != nil {
+			t.Fatal(err)
+		}
+		items := []anyField{{V: int64(1)}, {V: nil}, {V: int64(3)}}
+		var rows, errs int
+		var gotErr error
+		for row, err := range enc.Rows(items) {
+			if err != nil {
+				errs++
+				gotErr = err
+				if row != nil {
+					t.Error("row should be nil on error")
+				}
+				continue
+			}
+			rows++
+		}
+		if rows != 1 || errs != 1 {
+			t.Errorf("rows = %d, errs = %d, want 1 row then 1 error", rows, errs)
+		}
+		if !errors.Is(gotErr, spanenc.ErrUntypedNil) {
+			t.Errorf("error = %v, want ErrUntypedNil", gotErr)
+		}
+	})
+}
+
+// countingEncoder counts EncodeSpanner calls so tests can observe whether
+// RowEncoder.Rows encodes items lazily.
+type countingEncoder struct {
+	calls *int
+}
+
+func (c countingEncoder) EncodeSpanner() (any, error) {
+	*c.calls++
+	return "encoded", nil
+}
+
+var _ spanner.Encoder = countingEncoder{}

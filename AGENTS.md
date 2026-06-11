@@ -87,8 +87,10 @@ instead of the client's NumberValue / HTML-escaped JSON.
   result sets).
 - `RowEncoder[T]` (`NewRowEncoder`) — compiled read-shaped row codec:
   listing/mask/row type resolved once; `Columns` / `RowType` /
-  `ResultSetMetadata` / `Values(v, encodeOpts...)`. Mask validated like
-  ParamsMap (read-shaped); must stay consistent with
+  `ResultSetMetadata` / `Values(v, encodeOpts...)` / `Row(v, encodeOpts...)`
+  (→ `*spanner.Row` via `spanner.NewRow` GCV passthrough) /
+  `Rows(items, encodeOpts...)` (lazy `iter.Seq2[*spanner.Row, error]`).
+  Mask validated like ParamsMap (read-shaped); must stay consistent with
   StructColumnsAndValues (test enforces).
 - `ValuesFromSlice[T]` / `ArrayValueFromSlice[T]` — homogeneous slices;
   interface element types rejected via static inference; nil slice = typed

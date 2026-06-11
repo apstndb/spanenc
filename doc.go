@@ -33,6 +33,9 @@
 //   - [RowEncoder] ([NewRowEncoder]): compiled row codec for streaming many
 //     rows of one struct type — field listing, column mask, and row type
 //     resolved once; per row only [RowEncoder.Values] runs.
+//     [RowEncoder.Row] / [RowEncoder.Rows] encode into real
+//     [cloud.google.com/go/spanner.Row] values so virtual result sets flow
+//     through the same *spanner.Row pipelines as server query results.
 //   - [MutationColumnsAndValues] / [MutationMap]: one struct → cols/vals or
 //     map with plain Go values, for the non-Struct mutation constructors
 //     ([cloud.google.com/go/spanner.Update],
