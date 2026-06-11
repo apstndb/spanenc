@@ -24,8 +24,8 @@ github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.31.0
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.31.0/go.mod h1:P4WPRUkOhJC13W//jWpyfJNDAIpvRbAUIYLX/4jtlE0=
 github.com/apstndb/spantype v0.3.11 h1:wKue4WLYGT82MH3B3TRSFn8tWIbk1Geczs+5BAEtnK4=
 github.com/apstndb/spantype v0.3.11/go.mod h1:9eHowE7LcJ155ukCYUyuNzVAw9Ne0GXPXpHmu+iaMyk=
-github.com/apstndb/spanvalue v0.7.2 h1:VIo+fv/Ue+53a8zn7PjCEH5QUuauhwsFRq4LCGEyQwE=
-github.com/apstndb/spanvalue v0.7.2/go.mod h1:bqVJYydQf+D0Tux1LtyRlREPVwrVYNG+1usZJ489GTA=
+github.com/apstndb/spanvalue v0.7.3 h1:GqimKshIgDh+5sJd8XXipIrQ788bGKyaBsBKH1FuxHI=
+github.com/apstndb/spanvalue v0.7.3/go.mod h1:bqVJYydQf+D0Tux1LtyRlREPVwrVYNG+1usZJ489GTA=
 github.com/apstndb/structfields v0.1.0 h1:TQbi8EpzLyDr1GOsLWJfMQrtw+cq7BQhNCHhqZTCtEg=
 github.com/apstndb/structfields v0.1.0/go.mod h1:iZuSnr5cvgVvMaEhm0ceB+auA+MeNmA1mtnBA05m9Qw=
 github.com/apstndb/structfields/spannertag v0.1.0 h1:faXv5yYgKHV4DA3V0UpL4D9cTgMM87yacNbno0p3ulM=

@@ -147,13 +147,15 @@ func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	case []spanner.PGNumeric:
 		return encodeSlice(x, typector.PGNumeric(), pure(gcvctor.PGNumericFromNullable))
 	case spanner.NullJSON:
-		return encodeNullJSON(x)
+		// Since spanvalue v0.7.3, JSONFromNullable marshals Value like the
+		// client (a Go string becomes a quoted JSON string on the wire).
+		return gcvctor.JSONFromNullable(x)
 	case []spanner.NullJSON:
-		return encodeSlice(x, typector.JSON(), encodeNullJSON)
+		return encodeSlice(x, typector.JSON(), gcvctor.JSONFromNullable)
 	case spanner.PGJsonB:
-		return encodePGJsonB(x)
+		return gcvctor.PGJSONBFromNullable(x)
 	case []spanner.PGJsonB:
-		return encodeSlice(x, typector.PGJSONB(), encodePGJsonB)
+		return encodeSlice(x, typector.PGJSONB(), gcvctor.PGJSONBFromNullable)
 	case *big.Rat:
 		return encodeNumeric(cfg, x)
 	case []*big.Rat:
@@ -315,30 +317,6 @@ func encodeNullNumeric(cfg encodeConfig, v spanner.NullNumeric) (spanner.Generic
 		}
 	}
 	return gcvctor.NumericFromNullable(v), nil
-}
-
-// encodeNullJSON marshals v.Value via gcvctor (compact JSON without HTML
-// escaping, matching Spanner-emitted wire strings). The client uses
-// encoding/json HTML-escaped output; both forms are semantically identical
-// JSON.
-//
-// gcvctor.JSONFromNullable is deliberately NOT used here: it stores a string
-// Value as the wire JSON as-is, while the client (and this mirror) always
-// marshals, so a Go string Value becomes a quoted JSON string on the wire.
-func encodeNullJSON(v spanner.NullJSON) (spanner.GenericColumnValue, error) {
-	if !v.Valid {
-		return gcvctor.NullFromCode(sppb.TypeCode_JSON), nil
-	}
-	return gcvctor.JSONValue(v.Value)
-}
-
-// encodePGJsonB is the PG_JSONB analog of [encodeNullJSON]; like there,
-// gcvctor.PGJSONBFromNullable would diverge from the client on string Values.
-func encodePGJsonB(v spanner.PGJsonB) (spanner.GenericColumnValue, error) {
-	if !v.Valid {
-		return gcvctor.NullOf(typector.PGJSONB()), nil
-	}
-	return gcvctor.PGJSONBValue(v.Value)
 }
 
 // encodeTimestamp encodes a TIMESTAMP, honoring the

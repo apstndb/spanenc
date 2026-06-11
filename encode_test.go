@@ -121,8 +121,8 @@ func TestValueOf(t *testing.T) {
 		{"NullJSON valid", spanner.NullJSON{Value: map[string]any{"a": 1}, Valid: true}, spanner.GenericColumnValue{Type: typector.JSON(), Value: str(`{"a":1}`)}},
 		{"NullJSON invalid", spanner.NullJSON{}, spanner.GenericColumnValue{Type: typector.JSON(), Value: nullValue()}},
 		// A string Value marshals to a quoted JSON string, like the client;
-		// pins the divergence from gcvctor.JSONFromNullable, which stores
-		// string Values as wire JSON as-is.
+		// pins the gcvctor.JSONFromNullable semantics fixed in spanvalue
+		// v0.7.3 (apstndb/spanvalue#236).
 		{"NullJSON string value", spanner.NullJSON{Value: `{"a":1}`, Valid: true}, spanner.GenericColumnValue{Type: typector.JSON(), Value: str(`"{\"a\":1}"`)}},
 		{"PGJsonB valid", spanner.PGJsonB{Value: []any{1.0}, Valid: true}, spanner.GenericColumnValue{Type: typector.PGJSONB(), Value: str(`[1]`)}},
 		{"PGJsonB string value", spanner.PGJsonB{Value: "x", Valid: true}, spanner.GenericColumnValue{Type: typector.PGJSONB(), Value: str(`"x"`)}},
