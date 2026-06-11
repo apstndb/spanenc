@@ -6,7 +6,7 @@ require (
 	cloud.google.com/go v0.123.0
 	cloud.google.com/go/spanner v1.84.1
 	github.com/apstndb/spantype v0.3.11
-	github.com/apstndb/spanvalue v0.7.1
+	github.com/apstndb/spanvalue v0.7.2
 	github.com/apstndb/structfields v0.1.0
 	github.com/apstndb/structfields/spannertag v0.1.0
 	github.com/google/go-cmp v0.7.0

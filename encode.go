@@ -59,11 +59,9 @@ func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	case []spanner.Interval:
 		return encodeSlice(x, typector.Interval(), pure(gcvctor.IntervalValue))
 	case spanner.NullInterval:
-		return encodeNullable(x.Valid, x.Interval, sppb.TypeCode_INTERVAL, pure(gcvctor.IntervalValue))
+		return gcvctor.IntervalFromNullable(x), nil
 	case []spanner.NullInterval:
-		return encodeSlice(x, typector.Interval(), func(e spanner.NullInterval) (gcv, error) {
-			return encodeNullable(e.Valid, e.Interval, sppb.TypeCode_INTERVAL, pure(gcvctor.IntervalValue))
-		})
+		return encodeSlice(x, typector.Interval(), pure(gcvctor.IntervalFromNullable))
 	case string:
 		return gcvctor.StringValue(x), nil
 	case spanner.NullString:
@@ -143,9 +141,11 @@ func encodeValue(cfg encodeConfig, v any) (spanner.GenericColumnValue, error) {
 	case []spanner.NullNumeric:
 		return encodeSlice(x, typector.Numeric(), func(e spanner.NullNumeric) (gcv, error) { return encodeNullNumeric(cfg, e) })
 	case spanner.PGNumeric:
-		return encodePGNumeric(x), nil
+		// PGNumericFromNullable stores the payload string on the wire as-is,
+		// without validation, matching the client.
+		return gcvctor.PGNumericFromNullable(x), nil
 	case []spanner.PGNumeric:
-		return encodeSlice(x, typector.PGNumeric(), pure(encodePGNumeric))
+		return encodeSlice(x, typector.PGNumeric(), pure(gcvctor.PGNumericFromNullable))
 	case spanner.NullJSON:
 		return encodeNullJSON(x)
 	case []spanner.NullJSON:
@@ -295,15 +295,6 @@ func encodeSlice[T any](vs []T, elemType *sppb.Type, f encodeFunc[T]) (spanner.G
 	return gcvctor.ArrayValueOf(elemType, elems...)
 }
 
-// encodeNullable returns a typed NULL for invalid inputs and applies f
-// otherwise, for simple scalar type codes.
-func encodeNullable[T any](valid bool, v T, code sppb.TypeCode, f encodeFunc[T]) (spanner.GenericColumnValue, error) {
-	if !valid {
-		return gcvctor.NullFromCode(code), nil
-	}
-	return f(v)
-}
-
 // encodeNumeric validates precision and scale like the client under its
 // default NumericError loss-of-precision handling, then defers to
 // [gcvctor.NumericValue] (nil yields a typed NULL NUMERIC, matching *big.Rat
@@ -315,28 +306,25 @@ func encodeNumeric(cfg encodeConfig, v *big.Rat) (spanner.GenericColumnValue, er
 	return gcvctor.NumericValue(v), nil
 }
 
+// encodeNullNumeric validates like [encodeNumeric], then defers to
+// [gcvctor.NumericFromNullable].
 func encodeNullNumeric(cfg encodeConfig, v spanner.NullNumeric) (spanner.GenericColumnValue, error) {
-	if !v.Valid {
-		return gcvctor.NullFromCode(sppb.TypeCode_NUMERIC), nil
+	if v.Valid {
+		if err := validateNumeric(cfg, &v.Numeric); err != nil {
+			return gcv{}, err
+		}
 	}
-	return encodeNumeric(cfg, &v.Numeric)
+	return gcvctor.NumericFromNullable(v), nil
 }
 
-// encodePGNumeric stores the PGNumeric payload string on the wire as-is,
-// without validation, matching the client.
-func encodePGNumeric(v spanner.PGNumeric) spanner.GenericColumnValue {
-	if !v.Valid {
-		return gcvctor.NullOf(typector.PGNumeric())
-	}
-	return gcv{
-		Type:  typector.PGNumeric(),
-		Value: structpb.NewStringValue(v.Numeric),
-	}
-}
-
-// encodeNullJSON marshals via gcvctor (compact JSON without HTML escaping,
-// matching Spanner-emitted wire strings). The client uses encoding/json
-// HTML-escaped output; both forms are semantically identical JSON.
+// encodeNullJSON marshals v.Value via gcvctor (compact JSON without HTML
+// escaping, matching Spanner-emitted wire strings). The client uses
+// encoding/json HTML-escaped output; both forms are semantically identical
+// JSON.
+//
+// gcvctor.JSONFromNullable is deliberately NOT used here: it stores a string
+// Value as the wire JSON as-is, while the client (and this mirror) always
+// marshals, so a Go string Value becomes a quoted JSON string on the wire.
 func encodeNullJSON(v spanner.NullJSON) (spanner.GenericColumnValue, error) {
 	if !v.Valid {
 		return gcvctor.NullFromCode(sppb.TypeCode_JSON), nil
@@ -344,7 +332,8 @@ func encodeNullJSON(v spanner.NullJSON) (spanner.GenericColumnValue, error) {
 	return gcvctor.JSONValue(v.Value)
 }
 
-// encodePGJsonB is the PG_JSONB analog of [encodeNullJSON].
+// encodePGJsonB is the PG_JSONB analog of [encodeNullJSON]; like there,
+// gcvctor.PGJSONBFromNullable would diverge from the client on string Values.
 func encodePGJsonB(v spanner.PGJsonB) (spanner.GenericColumnValue, error) {
 	if !v.Valid {
 		return gcvctor.NullOf(typector.PGJSONB()), nil

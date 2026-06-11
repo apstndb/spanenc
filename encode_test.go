@@ -120,7 +120,12 @@ func TestValueOf(t *testing.T) {
 
 		{"NullJSON valid", spanner.NullJSON{Value: map[string]any{"a": 1}, Valid: true}, spanner.GenericColumnValue{Type: typector.JSON(), Value: str(`{"a":1}`)}},
 		{"NullJSON invalid", spanner.NullJSON{}, spanner.GenericColumnValue{Type: typector.JSON(), Value: nullValue()}},
+		// A string Value marshals to a quoted JSON string, like the client;
+		// pins the divergence from gcvctor.JSONFromNullable, which stores
+		// string Values as wire JSON as-is.
+		{"NullJSON string value", spanner.NullJSON{Value: `{"a":1}`, Valid: true}, spanner.GenericColumnValue{Type: typector.JSON(), Value: str(`"{\"a\":1}"`)}},
 		{"PGJsonB valid", spanner.PGJsonB{Value: []any{1.0}, Valid: true}, spanner.GenericColumnValue{Type: typector.PGJSONB(), Value: str(`[1]`)}},
+		{"PGJsonB string value", spanner.PGJsonB{Value: "x", Valid: true}, spanner.GenericColumnValue{Type: typector.PGJSONB(), Value: str(`"x"`)}},
 
 		{"time.Time", ts, spanner.GenericColumnValue{Type: typector.Timestamp(), Value: str("2026-01-01T18:04:05.123456789Z")}},
 		{"CommitTimestamp", spanner.CommitTimestamp, spanner.GenericColumnValue{Type: typector.Timestamp(), Value: str("spanner.commit_timestamp()")}},
