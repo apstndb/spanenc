@@ -109,6 +109,27 @@
 // columns; if you adopt it for that reason, record it in a comment so a
 // later cleanup does not undo it as an accident.
 //
+// That caution is calibrated to per-call-site cost. Once an application has
+// a shared struct-row entry point — one helper that takes a [RowEncoder]
+// plus items and owns formatting, styling, and writer streaming (see
+// executeStructRows in spanner-mycli) — the marginal cost of migrating a
+// fixed-shape statement drops to a struct definition with `spanner` tags,
+// and the shared-pipeline benefit usually clears the bar even for
+// string-only tables. At that point the real reasons NOT to migrate are
+// structural, not cost-based:
+//
+//   - Transposed records: each display row is a different field of one
+//     logical record (vertical key/value layouts). There is no row struct;
+//     the shape is one struct rendered sideways.
+//   - Grouped rows with empty continuation cells: multi-row groups that
+//     leave trailing columns blank on continuation lines. Typed columns
+//     would force a NULL-vs-empty-string output decision; make that
+//     deliberately before migrating, not as a side effect.
+//   - Dynamic column sets: column names computed per execution cannot be a
+//     compile-time struct.
+//   - Pre-rendered text: rows that are already final display strings (DDL
+//     dumps, SQL renderings) gain nothing from a type layer.
+//
 // For display cells, pass encoded values to
 // [github.com/apstndb/spanvalue.FormatRowColumns] instead of writing a
 // per-application GCV-to-string bridge, and detect SQL NULL cells with
