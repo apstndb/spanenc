@@ -134,6 +134,26 @@ func TestRowEncoderMaskAndErrors(t *testing.T) {
 		spanenc.MustNewRowEncoder[int]()
 	})
 
+	t.Run("MustResultSetMetadata", func(t *testing.T) {
+		t.Parallel()
+		md := spanenc.MustNewRowEncoder[singer]().MustResultSetMetadata()
+		if got := len(md.GetRowType().GetFields()); got != 3 {
+			t.Errorf("fields = %d, want 3", got)
+		}
+		// MustNewRowEncoder succeeds for a struct whose row type is not
+		// statically inferable; the deterministic failure must surface here.
+		type anyField struct {
+			V any
+		}
+		enc := spanenc.MustNewRowEncoder[anyField]()
+		defer func() {
+			if recover() == nil {
+				t.Error("MustResultSetMetadata: want panic for non-inferable row type, got none")
+			}
+		}()
+		enc.MustResultSetMetadata()
+	})
+
 	t.Run("non-struct", func(t *testing.T) {
 		t.Parallel()
 		if _, err := spanenc.NewRowEncoder[int](); !errors.Is(err, spanenc.ErrNotStruct) {
